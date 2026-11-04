@@ -14,6 +14,7 @@ gi.require_version("Soup", "3.0")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Soup, WebKit
 
 from . import config
+from .notes import NotesError, NotesFile
 
 WEB_DIR = Path(__file__).parent / "web"
 BOOK_PATH = "book"
@@ -31,6 +32,40 @@ CSP = (
 )
 CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript"}
 THEME_BACKGROUNDS = {"light": "#ffffff", "sepia": "#f5eedc", "dark": "#222226"}
+MARK_COLORS = {"yellow": "#f5c211", "green": "#33d17a", "blue": "#62a0ea", "pink": "#f08cc0"}
+DEFAULT_MARK_COLOR = "yellow"
+
+
+def _mark_color_name(color: str) -> str:
+    return {"yellow": _("Yellow"), "green": _("Green"), "blue": _("Blue"), "pink": _("Pink")}[color]
+
+
+def _install_css() -> None:
+    rules = "".join(f".mark-{name} {{ background: {hex_color}; }}" for name, hex_color in MARK_COLORS.items())
+    provider = Gtk.CssProvider()
+    provider.load_from_string(
+        rules + """
+        .mark-dot {
+            min-width: 14px;
+            min-height: 14px;
+            border-radius: 50%;
+            box-shadow: 0 0 0 1px alpha(black, 0.15);
+        }
+        button.mark-choice { min-width: 26px; min-height: 26px; padding: 0; }
+        button.mark-choice:checked .mark-dot {
+            box-shadow: 0 0 0 2px var(--popover-bg-color), 0 0 0 3.5px currentColor;
+        }
+        .mark-bar {
+            background-color: var(--popover-bg-color);
+            color: var(--popover-fg-color);
+            border-radius: 12px;
+            box-shadow: 0 0 0 1px alpha(currentColor, 0.1), 0 3px 10px alpha(black, 0.2);
+        }
+        .mark-bar > viewport > box { padding: 3px 6px; }
+        .mark-bar button.suggested-action { min-height: 26px; padding: 0 10px; }
+        """
+    )
+    Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
 
 def _web_context() -> WebKit.WebContext:
@@ -44,11 +79,18 @@ def _web_context() -> WebKit.WebContext:
 class ReaderPage(Adw.NavigationPage):
     """on_close(): the page wants to go back to the shelf. on_error(message): a book could not be opened."""
 
-    def __init__(self, state: config.State, on_error, show_external_link):
+    def __init__(self, state: config.State, on_error, show_external_link, show_message=lambda _text: None):
         super().__init__(title=_("Book"), tag="reader")
         self.state = state
         self.on_error = on_error
         self.show_external_link = show_external_link
+        self.show_message = show_message
+        self.notes: NotesFile | None = None
+        self._notes_monitor = None
+        self._mark_guard = False
+        self._mark_pending = False
+        self._mark_color = DEFAULT_MARK_COLOR
+        self._open_mark = None
         self.book_path: Path | None = None
         self.book_key: str | None = None
         self.opened = False
@@ -90,9 +132,265 @@ class ReaderPage(Adw.NavigationPage):
         self.toc_button.bind_property(
             "active", self.split, "show-sidebar", GObject.BindingFlags.BIDIRECTIONAL
         )
+        _install_css()
+        self.overlay.add_overlay(self._build_mark_bar())
+        self.mark_popover = self._build_mark_popover()
+        escape = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        escape.connect("key-pressed", self._on_key)
+        self.add_controller(escape)
+
         view = Adw.ToolbarView(content=self.split)
         view.add_top_bar(header)
         self.set_child(view)
+
+    def _color_buttons(self, on_toggled) -> dict[str, Gtk.ToggleButton]:
+        buttons, group = {}, None
+        for name in MARK_COLORS:
+            title = _mark_color_name(name)
+            dot = Gtk.Box(css_classes=["mark-dot", f"mark-{name}"], halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+            button = Gtk.ToggleButton(child=dot, tooltip_text=title, css_classes=["flat", "circular", "mark-choice"], group=group)
+            button.update_property([Gtk.AccessibleProperty.LABEL], [title])
+            button.connect("toggled", on_toggled, name)
+            buttons[name] = button
+            group = group or button
+        return buttons
+
+    def _build_mark_bar(self) -> Gtk.Widget:
+        """The bar below the text, as in Typecase: a color starts marking, Done ends it."""
+        box = Gtk.Box(spacing=2)
+        self.mark_buttons = self._color_buttons(self._on_mark_color)
+        for button in self.mark_buttons.values():
+            box.append(button)
+        self.underline_button = Gtk.ToggleButton(
+            icon_name="format-text-underline-symbolic", tooltip_text=_("Underline"), css_classes=["flat", "mark-choice"], margin_start=4
+        )
+        self.underline_button.update_property([Gtk.AccessibleProperty.LABEL], [_("Underline")])
+        self.underline_button.connect("toggled", self._on_underline)
+        box.append(self.underline_button)
+        self.mark_hint = Gtk.Label(visible=False, margin_start=10, margin_end=6)
+        self.mark_hint.add_css_class("dim-label")
+        box.append(self.mark_hint)
+        self.mark_done = Gtk.Button(label=_("Done"), tooltip_text=_("Stop Marking (Esc)"), visible=False, css_classes=["suggested-action"])
+        self.mark_done.connect("clicked", lambda _b: self.stop_marking())
+        box.append(self.mark_done)
+        # Scrollable sideways in a narrow window, instead of making the page wider.
+        return Gtk.ScrolledWindow(
+            css_classes=["mark-bar"], child=box, halign=Gtk.Align.CENTER, valign=Gtk.Align.END, margin_bottom=8,
+            margin_start=12, margin_end=12, hscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
+            vscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_width=True, propagate_natural_height=True,
+        )
+
+    def _build_mark_popover(self) -> Gtk.Popover:
+        """What can be done with a mark that exists: another color, a note, or remove it."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
+        row = Gtk.Box(spacing=2)
+        self.popover_colors = self._color_buttons(self._on_popover_color)
+        for button in self.popover_colors.values():
+            row.append(button)
+        self.popover_underline = Gtk.ToggleButton(
+            icon_name="format-text-underline-symbolic", tooltip_text=_("Underline"), css_classes=["flat", "mark-choice"], margin_start=4
+        )
+        self.popover_underline.update_property([Gtk.AccessibleProperty.LABEL], [_("Underline")])
+        self.popover_underline.connect("toggled", self._on_popover_underline)
+        row.append(self.popover_underline)
+        spacer = Gtk.Box(hexpand=True)
+        row.append(spacer)
+        self.popover_remove = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text=_("Remove Mark"), css_classes=["flat"])
+        self.popover_remove.update_property([Gtk.AccessibleProperty.LABEL], [_("Remove Mark")])
+        self.popover_remove.connect("clicked", self._on_popover_remove)
+        row.append(self.popover_remove)
+        box.append(row)
+        box.append(Gtk.Label(label=_("Note"), xalign=0, css_classes=["caption", "dim-label"]))
+        self.popover_note = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=6, bottom_margin=6, left_margin=6, right_margin=6)
+        self.popover_note.update_property([Gtk.AccessibleProperty.LABEL], [_("Note")])
+        box.append(Gtk.ScrolledWindow(child=self.popover_note, min_content_width=300, min_content_height=100, css_classes=["card"]))
+        popover = Gtk.Popover(child=box, position=Gtk.PositionType.TOP)
+        popover.set_parent(self.overlay)
+        popover.connect("closed", self._on_popover_closed)
+        return popover
+
+    # --- Marks ------------------------------------------------------------------------------
+
+    @property
+    def marking(self) -> bool:
+        return any(button.get_active() for button in self.mark_buttons.values())
+
+    def _style(self) -> str:
+        return "underline" if self.underline_button.get_active() else "highlight"
+
+    def _update_marking(self):
+        marking = self.marking
+        self.mark_done.set_visible(marking)
+        self.mark_hint.set_visible(marking)
+        if not marking:
+            self.mark_hint.set_label(_("Click the first word, then the last. Double-click marks one word."))
+        if self.opened:
+            hex_color = MARK_COLORS[self._mark_color]
+            self._js(f"endpaper.setMarking({json.dumps(marking)}, {json.dumps(hex_color)})")
+
+    def _on_mark_color(self, button, name):
+        if self._mark_guard:
+            return
+        if button.get_active():
+            self._mark_color = name
+        self._update_marking()
+        self.web.grab_focus()
+
+    def _on_underline(self, button):
+        if button.get_active() and not self.marking:
+            self.mark_buttons[self._mark_color].set_active(True)
+        self.web.grab_focus()
+
+    def start_marking(self) -> None:
+        self.mark_buttons[self._mark_color].set_active(True)
+
+    def stop_marking(self) -> None:
+        for button in self.mark_buttons.values():
+            button.set_active(False)
+        self.underline_button.set_active(False)
+        self._update_marking()
+        self.web.grab_focus()
+
+    def toggle_marking(self) -> None:
+        if self.marking:
+            self.stop_marking()
+        else:
+            self.start_marking()
+
+    def _on_key(self, _controller, keyval, _code, _state):
+        if keyval == Gdk.KEY_Escape and self.marking:
+            self.on_escape()
+            return True
+        return False
+
+    def on_escape(self):
+        """First forgets a word that was clicked, then ends marking."""
+        if self._mark_pending:
+            self._js("endpaper.cancelPendingMark()")
+        else:
+            self.stop_marking()
+
+    def _save_failed(self):
+        self.show_message(_("The notes could not be saved. They are kept until the book is closed."))
+
+    def _mark_data(self, entry) -> dict:
+        hex_color = MARK_COLORS.get(entry.color, MARK_COLORS[DEFAULT_MARK_COLOR])
+        return {"cfi": entry.cfi, "hex": hex_color, "style": entry.style, "hasNote": bool(entry.text.strip())}
+
+    def _send_marks(self):
+        if self.notes:
+            self._js(f"endpaper.setMarks({json.dumps([self._mark_data(e) for e in self.notes.entries])})")
+
+    def _on_mark_range(self, message):
+        if not self.notes:
+            return
+        existing = next((e for e in self.notes.entries if e.cfi == message["cfi"]), None)
+        try:
+            if existing:  # the same place once more: another color, not a second mark
+                self.notes.update(existing.id, color=self._mark_color, style=self._style())
+            else:
+                self.notes.add(message["cfi"], message["quote"], "", message.get("chapter"), self._mark_color, self._style())
+        except NotesError:
+            self._save_failed()
+        entry = next((e for e in self.notes.entries if e.cfi == message["cfi"]), None)
+        if entry:
+            self._js(f"endpaper.putMark({json.dumps(self._mark_data(entry))})")
+
+    def _on_mark_clicked(self, message):
+        entry = next((e for e in self.notes.entries if e.cfi == message["cfi"]), None) if self.notes else None
+        if entry is None or self.marking:
+            return
+        self._open_mark = None
+        self._mark_guard = True
+        self.popover_colors[entry.color if entry.color in MARK_COLORS else DEFAULT_MARK_COLOR].set_active(True)
+        self.popover_underline.set_active(entry.style == "underline")
+        self.popover_note.get_buffer().set_text(entry.text)
+        self._mark_guard = False
+        self._open_mark = entry.id
+        rect = Gdk.Rectangle()
+        rect.x, rect.y, rect.width, rect.height = message["x"], message["y"], 1, 1
+        self.mark_popover.set_pointing_to(rect)
+        self.mark_popover.popup()
+
+    def _change_open_mark(self, **changes):
+        if not self._open_mark or not self.notes:
+            return
+        try:
+            self.notes.update(self._open_mark, **changes)
+        except NotesError:
+            self._save_failed()
+        except KeyError:
+            self._open_mark = None  # removed by another program meanwhile
+        self._send_marks()
+
+    def _on_popover_color(self, button, name):
+        if not self._mark_guard and button.get_active():
+            self._change_open_mark(color=name)
+
+    def _on_popover_underline(self, button):
+        if not self._mark_guard:
+            self._change_open_mark(style="underline" if button.get_active() else "highlight")
+
+    def _on_popover_remove(self, _button):
+        mark, self._open_mark = self._open_mark, None
+        entry = next((e for e in self.notes.entries if e.id == mark), None) if self.notes else None
+        if entry:
+            try:
+                self.notes.remove(mark)
+            except NotesError:
+                self._save_failed()
+            if not any(e.cfi == entry.cfi for e in self.notes.entries):
+                self._js(f"endpaper.dropMark({json.dumps(entry.cfi)})")
+        self.mark_popover.popdown()
+
+    def _on_popover_closed(self, _popover):
+        if self._open_mark and self.notes:
+            buffer = self.popover_note.get_buffer()
+            text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
+            entry = next((e for e in self.notes.entries if e.id == self._open_mark), None)
+            if entry and entry.text != text:
+                self._change_open_mark(text=text)
+        self._open_mark = None
+        self.web.grab_focus()
+
+    def _open_notes(self, path: Path, title: str):
+        self.notes = None
+        try:
+            self.notes = NotesFile(path, title)
+        except NotesError:
+            self.show_message(_("The notes of this book could not be read. Marking is off, nothing was changed."))
+        for button in self.mark_buttons.values():
+            button.set_sensitive(self.notes is not None)
+        self.underline_button.set_sensitive(self.notes is not None)
+        if self.notes:
+            if self.notes.damaged:
+                self.show_message(_("The notes file of this book is damaged. It stays as it is, new marks go to a file beside it."))
+            self._notes_monitor = Gio.File.new_for_path(str(self.notes.path)).monitor_file(Gio.FileMonitorFlags.NONE, None)
+            self._notes_monitor.connect("changed", self._on_notes_changed)
+
+    def _on_notes_changed(self, *_args):
+        if not self.notes:
+            return
+        try:
+            if self.notes.refresh():
+                self._send_marks()
+        except NotesError:
+            pass  # the next change or look tries again; nothing is written over an unread file
+
+    def _close_notes(self):
+        self.mark_popover.popdown()
+        if self._notes_monitor:
+            self._notes_monitor.cancel()
+            self._notes_monitor = None
+        self._flush_notes()
+        self.notes = None
+
+    def _flush_notes(self):
+        if self.notes:
+            try:
+                self.notes.flush()
+            except NotesError:
+                self._save_failed()
 
     def _page_button(self, icon, label, align, script):
         button = Gtk.Button(icon_name=icon, tooltip_text=label, halign=align, valign=Gtk.Align.CENTER)
@@ -285,10 +583,24 @@ class ReaderPage(Adw.NavigationPage):
             self.opened = True
             self._fill_toc(message["toc"])
             self._highlight_toc(self._last_toc_href)
+            self._send_marks()
+            self._update_marking()
             if self.on_opened:
                 self.on_opened()
         elif kind == "relocate":
             self._on_relocate(message)
+        elif kind == "mark-pending":
+            self._mark_pending = message["active"]
+            self.mark_hint.set_label(
+                _("Now click the last word. A second click on this word marks only it.") if message["active"]
+                else _("Click the first word, then the last. Double-click marks one word.")
+            )
+        elif kind == "mark-other-chapter":
+            self.show_message(_("A mark cannot go across chapters. This word is the new start."))
+        elif kind == "mark-range":
+            self._on_mark_range(message)
+        elif kind == "mark-clicked":
+            self._on_mark_clicked(message)
         elif kind == "external-link":
             href = message["href"]
             if href.startswith(OPENABLE_LINKS):
@@ -306,18 +618,22 @@ class ReaderPage(Adw.NavigationPage):
         self.window_title.set_subtitle("")
         self.back_button.set_visible(False)
         self._clear_toc()
+        self._open_notes(path, title)
         self._apply_settings(save=False)
         self.web.load_uri(INDEX_URL)
 
     def close_book(self) -> None:
         """Saves the position and lets go of the book, so that its memory is free again."""
         self.flush()
+        self.stop_marking()
+        self._close_notes()
         self.book_path = self.book_key = None
         self.opened = False
         self._clear_toc()
         self.web.load_uri("about:blank")
 
     def flush(self) -> None:
+        self._flush_notes()
         if self._save_timer:
             GLib.source_remove(self._save_timer)
             self._save_timer = 0

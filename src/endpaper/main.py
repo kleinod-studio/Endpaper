@@ -65,6 +65,7 @@ class EndpaperApplication(Adw.Application):
         self.set_accels_for_action("win.search", ["<Primary>f"])
         # F9 is the GNOME default; on Omarchy the system uses F9, hence Ctrl+Shift+L as well.
         self.set_accels_for_action("win.toggle-toc", ["F9", "<Primary><Shift>l"])
+        self.set_accels_for_action("win.toggle-marking", ["<Primary>m"])
         self.set_accels_for_action("win.zoom-in", ["<Primary>plus", "<Primary>equal", "<Primary>KP_Add"])
         self.set_accels_for_action("win.zoom-out", ["<Primary>minus", "<Primary>KP_Subtract"])
         self.set_accels_for_action("win.zoom-reset", ["<Primary>0", "<Primary>KP_0"])

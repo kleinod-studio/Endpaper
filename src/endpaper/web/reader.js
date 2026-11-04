@@ -2,6 +2,7 @@
 // Books are not trusted: the Content Security Policy set by reader_view.py keeps their scripts from running.
 import './foliate-js/view.js'
 import { adapt, audit } from './contrast.js'
+import { createMarks } from './marks.js'
 
 const post = (type, data = {}) =>
     window.webkit.messageHandlers.endpaper.postMessage(JSON.stringify({ type, ...data }))
@@ -25,6 +26,7 @@ const SPREAD_COLUMN_SHARE = 0.395 // of the view's width: what margins and the g
 const FONT = { serif: 'serif', 'sans-serif': 'sans-serif' }
 
 let view = null
+let marks = null
 let settings = null
 const blocked = []
 
@@ -68,7 +70,7 @@ const applyLayout = () => {
     if (!view?.renderer) return
     const r = view.renderer
     r.setAttribute('flow', settings.flow)
-    r.setAttribute('margin', '48px')
+    r.setAttribute('margin', '60px') // room for the marking bar
     r.setAttribute('gap', '7%')
     r.setAttribute('max-column-count', String(columnCount()))
     r.setAttribute('max-block-size', '100000px')
@@ -141,6 +143,7 @@ window.endpaper = {
         try {
             const blob = await (await fetch(url)).blob()
             view = document.createElement('foliate-view')
+            marks = createMarks(view, post)
             view.addEventListener('relocate', ({ detail }) => post('relocate', {
                 cfi: detail.cfi ?? null,
                 fraction: Number.isFinite(detail.fraction) ? detail.fraction : 0,
@@ -152,6 +155,7 @@ window.endpaper = {
                 doc.addEventListener('securitypolicyviolation', onViolation)
                 doc.addEventListener('keydown', onKeydown)
                 doc.addEventListener('wheel', onWheel, { passive: false })
+                marks.attach(doc)
                 adaptColors(doc)
             })
             view.addEventListener('external-link', e => {
@@ -214,6 +218,39 @@ window.endpaper = {
             text: view.lastLocation?.range?.toString() ?? '',
         }
     },
+    setMarking: (on, hex) => marks?.setMarking(on, hex),
+    cancelPendingMark: () => marks?.cancelPending(),
+    setMarks: list => marks?.setAll(list),
+    putMark: mark => marks?.put(mark),
+    dropMark: cfi => marks?.drop(cfi),
+    // For the tests: a real click on the screen at the place of a word, or anywhere.
+    clickAt(x, y, detail = 1) {
+        const { doc } = view.renderer.getContents()[0]
+        const target = doc.elementFromPoint(x, y) ?? doc.documentElement
+        const options = { bubbles: true, cancelable: true, clientX: x, clientY: y, detail, view: doc.defaultView }
+        for (const type of ['mousedown', 'mouseup', 'click']) target.dispatchEvent(new MouseEvent(type, options))
+    },
+    clickWord(selector, word, detail = 1) {
+        const { doc } = view.renderer.getContents()[0]
+        const walker = doc.createTreeWalker(doc.querySelector(selector), NodeFilter.SHOW_TEXT)
+        while (walker.nextNode()) {
+            const index = walker.currentNode.data.indexOf(word)
+            if (index < 0) continue
+            const range = doc.createRange()
+            range.setStart(walker.currentNode, index)
+            range.setEnd(walker.currentNode, index + word.length)
+            const rect = range.getClientRects()[0]
+            this.clickAt(rect.left + rect.width / 2, rect.top + rect.height / 2, detail)
+            return true
+        }
+        return false
+    },
+    markState: () => ({
+        marking: marks?.marking ?? false,
+        pending: marks?.pending ?? false,
+        signs: marks?.signs ?? [],
+        drawn: view.renderer.getContents()[0]?.overlayer?.element.childElementCount ?? 0,
+    }),
     splitImages: () => {
         const { doc } = view.renderer.getContents()[0]
         const images = [...doc.querySelectorAll('img, svg')]

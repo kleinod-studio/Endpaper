@@ -26,10 +26,12 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 
 ## Phase 2: Highlights and notes
 
-- [ ] Instant bar: select text with the mouse, and one click highlights, underlines or adds a note
-- [ ] Marker pen: every selection is marked at once
-- [ ] Notes panel beside the table of contents, undo, and marks across pages
-- [ ] Notes saved as readable `.notes.md` files beside the book, and open in Typecase
+- [x] Marking bar: choose a color, click the first and the last word, or double-click one word; no dragging
+- [x] Click a mark to change its color, write a note or remove it
+- [ ] Marking with the keyboard alone
+- [x] Marks across pages
+- [x] Notes saved as readable `.notes.md` files beside the book
+- [ ] Notes panel beside the table of contents, undo, and open in Typecase
 - [ ] Previews of footnotes and references, without leaving the page
 
 ## Phase 3: Search

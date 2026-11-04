@@ -49,6 +49,7 @@ class EndpaperWindow(Adw.ApplicationWindow):
             ("add-books", lambda *_a: self.shelf.actions.activate_action("add-books", None), False),
             ("search", lambda *_a: self.shelf.start_search(), False),
             ("toggle-toc", lambda *_a: self.reader.toggle_toc(), True),
+            ("toggle-marking", lambda *_a: self.reader.toggle_marking(), True),
             ("zoom-in", lambda *_a: self.reader.change_font_size(10), True),
             ("zoom-out", lambda *_a: self.reader.change_font_size(-10), True),
             ("zoom-reset", lambda *_a: self.reader.change_font_size(None), True),
@@ -76,7 +77,7 @@ class EndpaperWindow(Adw.ApplicationWindow):
         if self.reader is None:
             from .reader_view import ReaderPage  # the web engine loads only when it is needed
 
-            self.reader = ReaderPage(self.state, self._on_reader_error, self._ask_external_link)
+            self.reader = ReaderPage(self.state, self._on_reader_error, self._ask_external_link, self.show_toast)
             self.reader.set_narrow(self.narrow)
         # The page comes first: laying out a book needs the size of the finished view.
         self.navigation.push(self.reader)
@@ -144,6 +145,7 @@ class EndpaperWindow(Adw.ApplicationWindow):
             (_("Previous Page"), "Left Page_Up <Shift>space"),
             (_("Back to Where You Were"), "BackSpace"),
             (_("Table of Contents"), "F9"),
+            (_("Start or Stop Marking"), "<Primary>m"),
             (_("Larger Text"), "<Primary>plus"),
             (_("Smaller Text"), "<Primary>minus"),
             (_("Normal Text Size"), "<Primary>0"),

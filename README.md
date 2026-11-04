@@ -4,7 +4,7 @@ A friendly bookshelf and a quiet place to read, for Linux. Built with GTK 4, lib
 
 Your books stay plain `.epub` files in a folder of your choice, with one subfolder for each category: no database, no account, no network access. Endpaper never changes your books.
 
-> **Status:** 0.1.0, an early version. The shelf and reading work; highlights and notes are next. See the [roadmap](ROADMAP.md).
+> **Status:** 0.1.0, an early version. The shelf and reading work; marking has just begun. See the [roadmap](ROADMAP.md).
 
 ## Features
 
@@ -15,6 +15,7 @@ Your books stay plain `.epub` files in a folder of your choice, with one subfold
 - **Reading**: pages or continuous scrolling, with two pages side by side when the window is wide enough, turned with the mouse, the scroll wheel or the keyboard. Every book remembers where you were.
 - **Table of contents**: beside the text, with the current chapter highlighted (F9). After following a link, a button takes you back.
 - **Your way of reading**: font, text size, line spacing, text width, hyphenation, and light, sepia or dark colors that also apply to books with colors of their own.
+- **Marking without dragging**: choose a color in the bar below the text, click the first word and then the last, across pages if you like. A double-click marks one word. Click a mark to change it or to write a note; a small sign beside the first line shows that it has one.
 - **Find a book**: filter by title or author, and sort by title, author or recent reading.
 - **GNOME-native**: libadwaita look, light and dark style, usable with the keyboard. The interface is in English and German.
 
@@ -26,6 +27,7 @@ Only EPUB is supported, and only without DRM. Answer fields in study editions ar
 | --- | --- | --- |
 | Books | Your library folder | Never changed by Endpaper |
 | Pins | `.endpaper.json` in each category folder | Syncs along with the folder |
+| Marks and notes | `<book>.notes.md` beside the book | Readable without Endpaper, moves and syncs with the book |
 | Reading positions, folded categories | App data on this computer | Not synced |
 | Covers | Cache | Can be deleted at any time |
 

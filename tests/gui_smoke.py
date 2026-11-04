@@ -34,7 +34,7 @@ from gi.repository import GLib  # noqa: E402
 
 from endpaper import config, library  # noqa: E402
 from endpaper.main import EndpaperApplication  # noqa: E402
-from make_epub import make_epub, make_hostile_epub  # noqa: E402
+from make_epub import make_epub, make_hostile_epub, make_styled_epub  # noqa: E402
 
 failures = []
 passed = 0
@@ -244,6 +244,51 @@ def scenario(app, window):
     shelf.open_card(broken)
     spin(0.3)
     check(window.navigation.get_visible_page() is shelf, "an unreadable file stays on the shelf with a message")
+
+    print("Colors of a book that insists on its own")
+    make_styled_epub(LIB / "styled.epub")
+    check(wait_for(lambda: (LIB / "styled.epub") in shelf.sections[LIB].cards), "the styled book is on the shelf")
+    styled = shelf.sections[LIB].cards[LIB / "styled.epub"]
+    wait_for(lambda: styled.info.title == "Styled")
+    reader.settings["theme"] = "light"
+    shelf.open_card(styled)
+    check(wait_for(lambda: reader.opened), "it opens")
+    wait_for(lambda: (js(reader, "endpaper.diagnostics()") or {}).get("cfi"))
+    colors = lambda name: js(reader, f"endpaper.colorsOf({json.dumps(name)})")
+    check(colors("head")["color"] == "rgb(47, 95, 99)", "light colors keep the book's own design")
+    anchor = js(reader, 'endpaper.selectionAnchor("inbox")')
+    for theme in ("dark", "sepia"):
+        reader.settings["theme"] = theme
+        reader._apply_settings()
+        spin(0.4)
+        audit = js(reader, "endpaper.contrastAudit()")
+        check(audit["checked"] >= 5 and audit["below"] == 0, f"{theme}: all text is readable, also against !important ({audit['lowest']}:1)")
+    reader.settings["theme"] = "dark"
+    reader._apply_settings()
+    spin(0.4)
+    head = [int(v) for v in colors("head")["color"][4:-1].split(",")]
+    check(sum(head) > 300 and max(head) - min(head) > 15, "a colored heading is lifted, and keeps its hue")
+    check(colors("gray")["color"] == "rgb(227, 227, 230)", "gray text takes the theme's text color")
+    check(colors("box")["background"] == "rgb(50, 50, 56)", "a light box stays a box")
+    check(colors("banner")["background"] == "rgb(20, 48, 102)" and colors("banner")["color"] == "rgb(255, 255, 255)", "a dark banner with white text stays as it is")
+    check(colors("rule")["border"] != "rgb(20, 48, 102)", "a dark rule becomes visible")
+    check(colors("pic")["inline"] is None or "filter" not in colors("pic")["inline"], "pictures are left alone")
+    check(js(reader, 'endpaper.selectionAnchor("inbox")') == anchor, "anchors for notes do not change")
+    reader.settings["theme"] = "light"
+    reader._apply_settings()
+    spin(0.4)
+    check(colors("head")["color"] == "rgb(47, 95, 99)" and not colors("head")["inline"], "going back to light undoes everything")
+    reader.settings["theme"] = "dark"
+    reader._apply_settings()
+    spin(0.3)
+    js(reader, "endpaper.goToIndex(1)")
+    spin(0.5)
+    js(reader, "endpaper.goToIndex(0)")
+    spin(0.5)
+    check(colors("head")["color"] != "rgb(47, 95, 99)", "a section that loads again is adapted again")
+    reader.settings["theme"] = "light"
+    window.navigation.pop()
+    wait_for(lambda: not reader.opened)
 
     print("A hostile book")
     Canary.hits.clear()

@@ -1,14 +1,21 @@
 // The reading area. It runs inside the web view and talks to reader_view.py through messages.
 // Books are not trusted: the Content Security Policy set by reader_view.py keeps their scripts from running.
 import './foliate-js/view.js'
+import { adapt, audit } from './contrast.js'
 
 const post = (type, data = {}) =>
     window.webkit.messageHandlers.endpaper.postMessage(JSON.stringify({ type, ...data }))
 
 const THEMES = {
-    light: { bg: '#ffffff', fg: '#2e2e32', link: '#1b6acb', scheme: 'light', override: false },
-    sepia: { bg: '#f5eedc', fg: '#40342a', link: '#8a5413', scheme: 'light', override: true },
-    dark: { bg: '#222226', fg: '#e3e3e6', link: '#78aeed', scheme: 'dark', override: true },
+    light: { bg: '#ffffff', fg: '#2e2e32', scheme: 'light', adapt: false },
+    sepia: {
+        bg: '#f5eedc', fg: '#40342a', scheme: 'light', adapt: true, dark: false,
+        bgRgb: 'rgb(245, 238, 220)', fgRgb: 'rgb(64, 52, 42)', surfaceRgb: 'rgb(233, 224, 200)',
+    },
+    dark: {
+        bg: '#222226', fg: '#e3e3e6', scheme: 'dark', adapt: true, dark: true,
+        bgRgb: 'rgb(34, 34, 38)', fgRgb: 'rgb(227, 227, 230)', surfaceRgb: 'rgb(50, 50, 56)',
+    },
 }
 const LINE_HEIGHT = { compact: 1.3, normal: 1.5, relaxed: 1.8 }
 const TEXT_WIDTH = { narrow: 520, normal: 640, wide: 800 }
@@ -37,13 +44,6 @@ const css = () => {
         -webkit-hyphens: ${settings.hyphenate ? 'auto' : 'manual'} !important;
     }
     ${font ? `body, body *:not(pre, code, kbd, samp, pre *, code *) { font-family: ${font} !important; }` : ''}
-    ${theme.override ? `
-    body *:not(img, svg, video) {
-        color: inherit !important;
-        background-color: transparent !important;
-    }
-    a:any-link, a:any-link * { color: ${theme.link} !important; }
-    ` : ''}
     img, svg { max-width: 100%; }
     /* Answer fields in study editions: what is typed there would be lost when the book closes. */
     textarea, input, select, button { display: none !important; }
@@ -63,6 +63,14 @@ const applyLayout = () => {
     r.setAttribute('max-block-size', '100000px')
     r.setAttribute('max-column-count', '1')
     r.setStyles?.(css())
+    for (const { doc } of r.getContents?.() ?? []) if (doc) adaptColors(doc)
+}
+
+let adaptMs = 0
+const adaptColors = doc => {
+    const start = performance.now()
+    adapt(doc, THEMES[settings.theme])
+    adaptMs = performance.now() - start
 }
 
 const flattenToc = (items, depth = 0, out = []) => {
@@ -126,6 +134,7 @@ window.endpaper = {
                 doc.addEventListener('securitypolicyviolation', onViolation)
                 doc.addEventListener('keydown', onKeydown)
                 doc.addEventListener('wheel', onWheel, { passive: false })
+                adaptColors(doc)
             })
             view.addEventListener('external-link', e => {
                 e.preventDefault()
@@ -171,6 +180,28 @@ window.endpaper = {
             fontSize: doc ? getComputedStyle(doc.documentElement).fontSize : '',
         }
     },
+    contrastAudit: () => {
+        const doc = view?.renderer?.getContents?.()[0]?.doc
+        return doc ? { ...audit(doc, THEMES[settings.theme].bgRgb ?? 'rgb(255, 255, 255)'), adaptMs: Math.round(adaptMs) } : null
+    },
+    colorsOf: id => {
+        const doc = view.renderer.getContents()[0].doc
+        const element = doc.getElementById(id), style = getComputedStyle(element)
+        return {
+            color: style.color,
+            background: style.backgroundColor,
+            border: style.borderLeftColor,
+            inline: element.getAttribute('style'),
+        }
+    },
+    selectionAnchor: id => {
+        const content = view.renderer.getContents()[0]
+        const range = content.doc.createRange()
+        range.selectNodeContents(content.doc.getElementById(id))
+        return view.getCFI(content.index, range)
+    },
+    goToIndex: index => view.goTo(index),
+    sections: () => view.book.sections.map(s => ({ linear: s.linear, size: s.size })),
     clickLink(index) {
         const doc = view.renderer.getContents()[0].doc
         doc.querySelectorAll('a[href]')[index]?.click()

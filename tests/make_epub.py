@@ -65,6 +65,35 @@ def make_epub(path: Path, title="Test Book", author="A. Author", identifier="urn
     return path
 
 
+def make_styled_epub(path: Path):
+    """A book that insists on its own colors with !important, as many study editions do."""
+    css = """
+    html body h1#head { color: #2f5f63 !important; }
+    html body p#gray { color: #555555 !important; }
+    html body div#box { background-color: #eeeeee !important; }
+    html body p#banner { background-color: #143066 !important; color: #ffffff !important; }
+    html body a#link { color: #2a4a8f !important; }
+    html body div#rule { border-left: 3px solid #143066 !important; }
+    """
+    body = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en"><head><title>Styled</title>'
+        f"<style>{css}</style></head><body>"
+        '<h1 id="head">A dark heading</h1><p id="gray">Gray text that fades on a dark page.</p>'
+        '<div id="box"><p id="inbox">Text in a light box.</p></div><p id="banner">White on a dark banner</p>'
+        '<p><a id="link" href="ch2.xhtml">A link</a></p><div id="rule">Beside a rule</div>'
+        '<img id="pic" src="cover.png" alt=""/></body></html>'
+    )
+    make_epub(path, title="Styled", identifier="urn:styled", chapters=2, paragraphs=3)
+    with zipfile.ZipFile(path) as old:
+        entries = {name: old.read(name) for name in old.namelist()}
+    entries["OEBPS/ch1.xhtml"] = body.encode("utf-8")
+    with zipfile.ZipFile(path, "w") as new:
+        for name, data in entries.items():
+            new.writestr(name, data)
+    return path
+
+
 def make_hostile_epub(path: Path, base: str):
     """A book that tries everything to run code and to reach the outside. base: a local server that records requests."""
     leak = (

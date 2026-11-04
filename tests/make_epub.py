@@ -94,6 +94,29 @@ def make_styled_epub(path: Path):
     return path
 
 
+def make_figures_epub(path: Path):
+    """Pictures in floating figures between paragraphs, a layout that can split them across pages."""
+    text = " ".join(f"Sentence number {i} goes on for a while beside the picture." for i in range(6))
+    block = (
+        '<div style="float: right; width: 50%;"><figure style="display: grid; margin: 0;">'
+        '<img src="cover.png" alt="" style="display: block; width: 100%; height: auto;"/></figure></div>'
+        f"<p>{text}</p><div style=\"clear: both;\"></div>"
+    )
+    body = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en"><head><title>Figures</title></head>'
+        f"<body><h1>Figures</h1>{block * 30}</body></html>"
+    )
+    make_epub(path, title="Figures", identifier="urn:figures", chapters=1, paragraphs=1)
+    with zipfile.ZipFile(path) as old:
+        entries = {name: old.read(name) for name in old.namelist()}
+    entries["OEBPS/ch1.xhtml"] = body.encode("utf-8")
+    with zipfile.ZipFile(path, "w") as new:
+        for name, data in entries.items():
+            new.writestr(name, data)
+    return path
+
+
 def make_hostile_epub(path: Path, base: str):
     """A book that tries everything to run code and to reach the outside. base: a local server that records requests."""
     leak = (

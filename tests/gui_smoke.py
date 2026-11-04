@@ -34,7 +34,7 @@ from gi.repository import GLib  # noqa: E402
 
 from endpaper import config, library  # noqa: E402
 from endpaper.main import EndpaperApplication  # noqa: E402
-from make_epub import make_epub, make_hostile_epub, make_styled_epub  # noqa: E402
+from make_epub import make_epub, make_figures_epub, make_hostile_epub, make_styled_epub  # noqa: E402
 
 failures = []
 passed = 0
@@ -322,6 +322,20 @@ def scenario(app, window):
     spin(0.5)
     check(colors("head")["color"] != "rgb(47, 95, 99)", "a section that loads again is adapted again")
     reader.settings["theme"] = "light"
+    window.navigation.pop()
+    wait_for(lambda: not reader.opened)
+
+    print("Pictures stay whole")
+    make_figures_epub(LIB / "figures.epub")
+    check(wait_for(lambda: (LIB / "figures.epub") in shelf.sections[LIB].cards), "the book with pictures is on the shelf")
+    figures = shelf.sections[LIB].cards[LIB / "figures.epub"]
+    wait_for(lambda: figures.info.title == "Figures")
+    shelf.open_card(figures)
+    check(wait_for(lambda: reader.opened), "it opens")
+    wait_for(lambda: (js(reader, "endpaper.diagnostics()") or {}).get("cfi"))
+    spin(0.5)
+    images = js(reader, "endpaper.splitImages()")
+    check(images["images"] == 30 and images["split"] == 0, f"no picture is cut in two ({images['split']} of {images['images']})")
     window.navigation.pop()
     wait_for(lambda: not reader.opened)
 

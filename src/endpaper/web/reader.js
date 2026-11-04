@@ -48,6 +48,8 @@ const css = () => {
     }
     ${font ? `body, body *:not(pre, code, kbd, samp, pre *, code *) { font-family: ${font} !important; }` : ''}
     img, svg { max-width: 100%; }
+    /* Pictures are kept whole by foliate-js, but not when they sit in a figure that may break across pages. */
+    figure { break-inside: avoid !important; }
     /* Answer fields in study editions: what is typed there would be lost when the book closes. */
     textarea, input, select, button { display: none !important; }
     `
@@ -211,6 +213,11 @@ window.endpaper = {
             start: r.start,
             text: view.lastLocation?.range?.toString() ?? '',
         }
+    },
+    splitImages: () => {
+        const { doc } = view.renderer.getContents()[0]
+        const images = [...doc.querySelectorAll('img, svg')]
+        return { images: images.length, split: images.filter(image => image.getClientRects().length > 1).length }
     },
     colorsOf: id => {
         const doc = view.renderer.getContents()[0].doc

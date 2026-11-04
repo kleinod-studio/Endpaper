@@ -12,4 +12,6 @@ if command -v msgfmt >/dev/null; then
   done
 fi
 
-PYTHONPATH=src exec python3 -m endpaper "$@"
+# GTK's warnings about frame timing are harmless and only visible here, so they are filtered out;
+# all other messages still show.
+PYTHONPATH=src exec python3 -m endpaper "$@" 2> >(grep --line-buffered -v -e 'gdk_frame_timings' -e '^$' >&2)

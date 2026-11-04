@@ -12,7 +12,7 @@ Your books stay plain `.epub` files in a folder of your choice, with one subfold
 - **Pins**: pin books in each category. They come first, and stay visible while the category is folded.
 - **Order from the shelf**: create, rename and delete categories; add, rename and delete books; move books by dragging or with Alt+Up and Alt+Down. Deleting always goes through the system trash, and nothing is ever overwritten.
 - **Changes from outside**: add a file with your file manager or a sync tool, and it appears on the shelf.
-- **Reading**: pages or continuous scrolling, turned with the mouse, the scroll wheel or the keyboard. Every book remembers where you were.
+- **Reading**: pages or continuous scrolling, with two pages side by side when the window is wide enough, turned with the mouse, the scroll wheel or the keyboard. Every book remembers where you were.
 - **Table of contents**: beside the text, with the current chapter highlighted (F9). After following a link, a button takes you back.
 - **Your way of reading**: font, text size, line spacing, text width, hyphenation, and light, sepia or dark colors that also apply to books with colors of their own.
 - **Find a book**: filter by title or author, and sort by title, author or recent reading.

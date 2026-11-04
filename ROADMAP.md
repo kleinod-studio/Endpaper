@@ -17,7 +17,7 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 - [x] Shelf with covers, categories that fold, and pinned books that stay visible
 - [x] Create, rename and delete categories; add, move, rename and delete books; notes move along
 - [x] Changes in the folder from outside appear on the shelf
-- [x] Reading with mouse, scroll wheel and keyboard; pages or continuous scrolling
+- [x] Reading with mouse, scroll wheel and keyboard; pages (two side by side in a wide window) or continuous scrolling
 - [x] Table of contents beside the text, and a way back after following a link
 - [x] Reading position per book
 - [x] Font, size, line spacing, text width, hyphenation; light, sepia and dark colors

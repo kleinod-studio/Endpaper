@@ -10,6 +10,7 @@ install_data(
     'endpaper/fileio.py',
     'endpaper/library.py',
     'endpaper/main.py',
+    'endpaper/notes.py',
     'endpaper/reader_view.py',
     'endpaper/shelf.py',
     'endpaper/window.py',

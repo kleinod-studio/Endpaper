@@ -4,6 +4,7 @@ Plain logic without any interface. A book's notes file moves with it, nothing is
 overwritten, and deleting always goes through the system trash."""
 
 import errno
+import glob
 import json
 import os
 import shutil
@@ -15,6 +16,7 @@ from .fileio import atomic_write_text
 
 BOOK_SUFFIX = ".epub"
 NOTES_SUFFIX = ".notes.md"
+CONFLICT_INFIX = ".notes-conflict-"
 SHELF_FILE = ".endpaper.json"
 
 
@@ -55,6 +57,15 @@ class Category:
 
 def notes_path_for(book_path: Path) -> Path:
     return book_path.with_name(book_path.stem + NOTES_SUFFIX)
+
+
+def conflict_path_for(book_path: Path, stamp: str) -> Path:
+    return book_path.with_name(f"{book_path.stem}{CONFLICT_INFIX}{stamp}.md")
+
+
+def conflict_paths_for(book_path: Path) -> list[Path]:
+    """Notes that could not go into the notes file. They belong to the book just the same."""
+    return sorted(book_path.parent.glob(f"{glob.escape(book_path.stem)}{CONFLICT_INFIX}*.md"))
 
 
 def _is_hidden(name: str) -> bool:
@@ -190,20 +201,24 @@ def _copy_no_overwrite(source: Path, target: Path) -> None:
 
 
 def _move_book_files(book: Book, target: Path) -> None:
-    """Moves the book and its notes, or neither."""
-    notes = book.notes_path
-    target_notes = notes_path_for(target)
-    if target.exists():
-        raise LibraryError("exists", target.name)
-    if notes.exists() and target_notes.exists():
-        raise LibraryError("exists", target_notes.name)
-    _move_no_overwrite(book.path, target)
-    if notes.exists():
-        try:
-            _move_no_overwrite(notes, target_notes)
-        except OSError:
-            _move_no_overwrite(target, book.path)
-            raise
+    """Moves the book and everything with its notes, or nothing."""
+    pairs = [(book.path, target)]
+    if book.notes_path.exists():
+        pairs.append((book.notes_path, notes_path_for(target)))
+    for path in conflict_paths_for(book.path):
+        pairs.append((path, target.with_name(target.stem + path.name[len(book.path.stem):])))
+    for _source, destination in pairs:
+        if destination.exists():
+            raise LibraryError("exists", destination.name)
+    moved = []
+    try:
+        for source, destination in pairs:
+            _move_no_overwrite(source, destination)
+            moved.append((source, destination))
+    except OSError:
+        for source, destination in reversed(moved):
+            _move_no_overwrite(destination, source)
+        raise
 
 
 def _unpin(category: Path, key: str) -> bool:
@@ -258,4 +273,5 @@ def set_pinned(book: Book, pinned: bool) -> None:
 
 def trash_paths_for_book(book: Book) -> list[Path]:
     """What goes to the trash with a book: its notes too, and they can be restored together."""
-    return [book.path] + ([book.notes_path] if book.notes_path.exists() else [])
+    notes = [book.notes_path] if book.notes_path.exists() else []
+    return [book.path] + notes + conflict_paths_for(book.path)

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Endpaper
+Comment=Read and study your EPUB books
+Comment[de]=EPUB-Bücher lesen und durcharbeiten
+Exec=endpaper
+Icon=studio.kleinod.Endpaper
+Terminal=false
+Type=Application
+Categories=GTK;GNOME;Office;Viewer;
+Keywords=ebook;epub;book;reader;library;
+Keywords[de]=E-Book;EPUB;Buch;Bücher;Lesen;Bibliothek;
+StartupNotify=true

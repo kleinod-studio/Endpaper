@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+import sys
+
+# Meson fills in the paths at install time (Flatpak: /app/...).
+sys.path.insert(1, "@pkgdatadir@")
+
+from endpaper.main import main
+
+sys.exit(main(localedir="@localedir@"))

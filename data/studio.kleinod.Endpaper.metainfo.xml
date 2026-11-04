@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 Sascha Wübbena (kleinod.studio) -->
+<component type="desktop-application">
+  <id>studio.kleinod.Endpaper</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Endpaper</name>
+  <summary>Read and study your EPUB books</summary>
+  <developer id="studio.kleinod">
+    <name>kleinod.studio</name>
+  </developer>
+  <description>
+    <p>Endpaper is a friendly bookshelf and a quiet place to read. Your books stay plain EPUB files in a folder of your choice, with one subfolder for each category — no database, no account, no network access.</p>
+    <ul>
+      <li>A shelf with categories that fold away, and pinned books that stay in reach</li>
+      <li>Keep books in order right from the shelf: move them by dragging, rename them, add new ones</li>
+      <li>The table of contents beside the text, and the way back after following a link</li>
+      <li>Your choice of font, text size, line spacing, text width, hyphenation and colors</li>
+      <li>Pages or continuous scrolling, and every book remembers where you were</li>
+    </ul>
+    <p>Endpaper works completely offline, collects no data, and never changes your books. Books protected by DRM are not supported.</p>
+  </description>
+  <launchable type="desktop-id">studio.kleinod.Endpaper.desktop</launchable>
+  <url type="homepage">https://kleinod.studio/endpaper</url>
+  <url type="bugtracker">https://github.com/kleinod-studio/Endpaper/issues</url>
+  <url type="vcs-browser">https://github.com/kleinod-studio/Endpaper</url>
+  <branding>
+    <color type="primary" scheme_preference="light">#ECEAF7</color>
+    <color type="primary" scheme_preference="dark">#2A2550</color>
+  </branding>
+  <content_rating type="oars-1.1"/>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <releases>
+    <release version="0.1.0" date="2026-11-04">
+      <description>
+        <p>First version: the bookshelf and reading.</p>
+      </description>
+    </release>
+  </releases>
+</component>

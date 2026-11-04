@@ -1,0 +1,21 @@
+# The author's real books: copyrighted, may carry personal watermarks. Never commit.
+testbooks/
+*.epub
+!tests/fixtures/*.epub
+
+# Local only
+CLAUDE.md
+docs/Lastenheft.md
+docs/Phase0-Ergebnis.md
+
+__pycache__/
+*.pyc
+.venv/
+locale/
+prototype/
+build/
+builddir/
+build-dir/
+.flatpak-builder/
+repo/
+*.flatpak

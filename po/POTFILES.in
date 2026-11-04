@@ -1,0 +1,4 @@
+src/endpaper/main.py
+src/endpaper/reader_view.py
+src/endpaper/shelf.py
+src/endpaper/window.py

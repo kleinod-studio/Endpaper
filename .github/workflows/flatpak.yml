@@ -1,0 +1,68 @@
+# Builds Endpaper as a Flatpak bundle for x86_64 and aarch64.
+# On a version tag (v1.2.3) the bundles are attached to the GitHub release of that tag.
+name: Flatpak
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Logic tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install PyGObject
+        run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-glib-2.0
+      - name: Run unit tests
+        run: python3 -m unittest discover -s tests
+
+  flatpak:
+    name: Flatpak (${{ matrix.arch }})
+    needs: tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v7
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6.8
+        with:
+          bundle: Endpaper-${{ matrix.arch }}.flatpak
+          manifest-path: studio.kleinod.Endpaper.yml
+          arch: ${{ matrix.arch }}
+          cache-key: flatpak-builder-${{ matrix.arch }}-${{ github.sha }}
+
+  release:
+    name: Attach to release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: flatpak
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: bundles
+          merge-multiple: true
+      - name: Upload bundles to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l bundles
+          for file in bundles/*.flatpak; do
+            name="Endpaper-${GITHUB_REF_NAME#v}-$(basename "$file" .flatpak | sed 's/^Endpaper-//').flatpak"
+            cp "$file" "$name"
+            gh release upload "$GITHUB_REF_NAME" "$name" --clobber --repo "$GITHUB_REPOSITORY"
+          done

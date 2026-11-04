@@ -1,0 +1,428 @@
+# German translation for Endpaper.
+# This file is distributed under the same license as the Endpaper package.
+msgid ""
+msgstr ""
+"Project-Id-Version: endpaper\n"
+"Report-Msgid-Bugs-To: \n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#. Translators: put your name here, it is shown in the About dialog
+#: src/endpaper/main.py:92
+msgid "translator-credits"
+msgstr "Sascha Wübbena"
+
+#: src/endpaper/reader_view.py:48
+msgid "Book"
+msgstr "Buch"
+
+#: src/endpaper/reader_view.py:67 src/endpaper/reader_view.py:80
+#: src/endpaper/window.py:146
+msgid "Table of Contents"
+msgstr "Inhaltsverzeichnis"
+
+#: src/endpaper/reader_view.py:69 src/endpaper/window.py:145
+msgid "Back to Where You Were"
+msgstr "Zurück zur vorigen Stelle"
+
+#: src/endpaper/reader_view.py:73
+msgid "Text and Layout"
+msgstr "Text und Layout"
+
+#: src/endpaper/reader_view.py:86 src/endpaper/window.py:144
+msgid "Previous Page"
+msgstr "Vorherige Seite"
+
+#: src/endpaper/reader_view.py:87 src/endpaper/window.py:143
+msgid "Next Page"
+msgstr "Nächste Seite"
+
+#: src/endpaper/reader_view.py:128
+msgid "Text Size (%)"
+msgstr "Textgröße (%)"
+
+#: src/endpaper/reader_view.py:132
+msgid "Font"
+msgstr "Schrift"
+
+#: src/endpaper/reader_view.py:132
+msgid "As in the Book"
+msgstr "Wie im Buch"
+
+#: src/endpaper/reader_view.py:132
+msgid "Serif"
+msgstr "Serifenschrift"
+
+#: src/endpaper/reader_view.py:132
+msgid "Sans Serif"
+msgstr "Serifenlose Schrift"
+
+#: src/endpaper/reader_view.py:133
+msgid "Line Spacing"
+msgstr "Zeilenabstand"
+
+#: src/endpaper/reader_view.py:133
+msgid "Compact"
+msgstr "Kompakt"
+
+#: src/endpaper/reader_view.py:133 src/endpaper/reader_view.py:134
+msgid "Normal"
+msgstr "Normal"
+
+#: src/endpaper/reader_view.py:133
+msgid "Relaxed"
+msgstr "Weit"
+
+#: src/endpaper/reader_view.py:134
+msgid "Text Width"
+msgstr "Textbreite"
+
+#: src/endpaper/reader_view.py:134
+msgid "Narrow"
+msgstr "Schmal"
+
+#: src/endpaper/reader_view.py:134
+msgid "Wide"
+msgstr "Breit"
+
+#: src/endpaper/reader_view.py:135
+msgid "Hyphenation"
+msgstr "Silbentrennung"
+
+#: src/endpaper/reader_view.py:142
+msgid "Colors"
+msgstr "Farben"
+
+#: src/endpaper/reader_view.py:142
+msgid "Follow System"
+msgstr "Wie das System"
+
+#: src/endpaper/reader_view.py:142
+msgid "Light"
+msgstr "Hell"
+
+#: src/endpaper/reader_view.py:142
+msgid "Sepia"
+msgstr "Sepia"
+
+#: src/endpaper/reader_view.py:142
+msgid "Dark"
+msgstr "Dunkel"
+
+#: src/endpaper/reader_view.py:143
+msgid "Layout"
+msgstr "Layout"
+
+#: src/endpaper/reader_view.py:143
+msgid "Pages"
+msgstr "Seiten"
+
+#: src/endpaper/reader_view.py:143
+msgid "Continuous Scrolling"
+msgstr "Fortlaufend scrollen"
+
+#: src/endpaper/reader_view.py:205
+msgid "Book Text"
+msgstr "Buchtext"
+
+#: src/endpaper/reader_view.py:260
+msgid "The book could not be shown any further."
+msgstr "Das Buch konnte nicht weiter angezeigt werden."
+
+#: src/endpaper/reader_view.py:297 src/endpaper/shelf.py:600
+msgid "This file could not be opened as a book."
+msgstr "Diese Datei ließ sich nicht als Buch öffnen."
+
+#: src/endpaper/reader_view.py:340 src/endpaper/shelf.py:136
+#, python-brace-format
+msgid "{percent}%"
+msgstr "{percent} %"
+
+#: src/endpaper/shelf.py:21
+#, python-brace-format
+msgid "“{name}” already exists."
+msgstr "„{name}“ gibt es schon."
+
+#: src/endpaper/shelf.py:23
+msgid "This name cannot be used."
+msgstr "Dieser Name kann nicht verwendet werden."
+
+#: src/endpaper/shelf.py:24
+#, python-brace-format
+msgid "That did not work: {reason}"
+msgstr "Das hat nicht geklappt: {reason}"
+
+#: src/endpaper/shelf.py:113
+msgid "Cannot be read"
+msgstr "Nicht lesbar"
+
+#: src/endpaper/shelf.py:122 src/endpaper/shelf.py:568
+msgid "Unpin"
+msgstr "Lösen"
+
+#: src/endpaper/shelf.py:122 src/endpaper/shelf.py:568
+msgid "Pin"
+msgstr "Anpinnen"
+
+#: src/endpaper/shelf.py:134
+msgid "Pinned"
+msgstr "Angepinnt"
+
+#: src/endpaper/shelf.py:194
+msgid "Category Menu"
+msgstr "Kategoriemenü"
+
+#: src/endpaper/shelf.py:214
+msgid "No books here yet. Drag them here or add them from the menu."
+msgstr "Noch keine Bücher hier. Zieh sie hierher oder füge sie über das Menü hinzu."
+
+#: src/endpaper/shelf.py:236 src/endpaper/shelf.py:261
+#: src/endpaper/shelf.py:573 src/endpaper/shelf.py:769
+msgid "Without Category"
+msgstr "Ohne Kategorie"
+
+#: src/endpaper/shelf.py:262
+#, python-brace-format
+msgid "{count} book"
+msgid_plural "{count} books"
+msgstr[0] "{count} Buch"
+msgstr[1] "{count} Bücher"
+
+#: src/endpaper/shelf.py:265
+msgid "Unfold"
+msgstr "Aufklappen"
+
+#: src/endpaper/shelf.py:265
+msgid "Fold"
+msgstr "Einklappen"
+
+#: src/endpaper/shelf.py:332
+msgid "New Category…"
+msgstr "Neue Kategorie …"
+
+#: src/endpaper/shelf.py:333 src/endpaper/shelf.py:379
+#: src/endpaper/shelf.py:552
+msgid "Add Books…"
+msgstr "Bücher hinzufügen …"
+
+#: src/endpaper/shelf.py:334 src/endpaper/shelf.py:773
+msgid "Add"
+msgstr "Hinzufügen"
+
+#: src/endpaper/shelf.py:337 src/endpaper/window.py:131
+msgid "Find a Book"
+msgstr "Buch suchen"
+
+#: src/endpaper/shelf.py:342
+msgid "Title"
+msgstr "Titel"
+
+#: src/endpaper/shelf.py:343
+msgid "Author"
+msgstr "Autor"
+
+#: src/endpaper/shelf.py:344
+msgid "Recently Read"
+msgstr "Zuletzt gelesen"
+
+#: src/endpaper/shelf.py:345
+msgid "Sort By"
+msgstr "Sortieren nach"
+
+#: src/endpaper/shelf.py:347 src/endpaper/shelf.py:370
+msgid "Choose Library Folder…"
+msgstr "Bibliotheksordner wählen …"
+
+#: src/endpaper/shelf.py:348 src/endpaper/window.py:155
+msgid "Keyboard Shortcuts"
+msgstr "Tastenkürzel"
+
+#: src/endpaper/shelf.py:349
+msgid "About Endpaper"
+msgstr "Über Endpaper"
+
+#: src/endpaper/shelf.py:351
+msgid "Main Menu"
+msgstr "Hauptmenü"
+
+#: src/endpaper/shelf.py:353
+msgid "Title or author"
+msgstr "Titel oder Autor"
+
+#: src/endpaper/shelf.py:375
+msgid "Welcome to Endpaper"
+msgstr "Willkommen bei Endpaper"
+
+#: src/endpaper/shelf.py:376
+msgid "Choose a folder for your books. Each of its subfolders becomes a category on your shelf."
+msgstr "Wähle einen Ordner für deine Bücher. Jeder seiner Unterordner wird zu einer Kategorie in deinem Regal."
+
+#: src/endpaper/shelf.py:384
+msgid "Your Shelf Is Empty"
+msgstr "Dein Regal ist leer"
+
+#: src/endpaper/shelf.py:385
+msgid "Add EPUB books, or drag them here. They are copied into your library folder."
+msgstr "Füge EPUB-Bücher hinzu oder zieh sie hierher. Sie werden in deinen Bibliotheksordner kopiert."
+
+#: src/endpaper/shelf.py:387
+msgid "No Books Found"
+msgstr "Keine Bücher gefunden"
+
+#: src/endpaper/shelf.py:554 src/endpaper/shelf.py:581
+msgid "Rename…"
+msgstr "Umbenennen …"
+
+#: src/endpaper/shelf.py:555 src/endpaper/shelf.py:582
+#: src/endpaper/shelf.py:701
+msgid "Move to Trash"
+msgstr "In den Papierkorb"
+
+#: src/endpaper/shelf.py:567 src/endpaper/window.py:100
+msgid "Open"
+msgstr "Öffnen"
+
+#: src/endpaper/shelf.py:580
+msgid "Move To"
+msgstr "Verschieben nach"
+
+#: src/endpaper/shelf.py:643
+msgid "Rename Book"
+msgstr "Buch umbenennen"
+
+#: src/endpaper/shelf.py:643 src/endpaper/shelf.py:687
+msgid "Rename"
+msgstr "Umbenennen"
+
+#: src/endpaper/shelf.py:650 src/endpaper/shelf.py:708
+#, python-brace-format
+msgid "“{title}” was moved to the trash."
+msgstr "„{title}“ liegt jetzt im Papierkorb."
+
+#: src/endpaper/shelf.py:658
+#, python-brace-format
+msgid "Could not move to the trash: {reason}"
+msgstr "Konnte nicht in den Papierkorb gelegt werden: {reason}"
+
+#: src/endpaper/shelf.py:674 src/endpaper/window.py:129
+msgid "New Category"
+msgstr "Neue Kategorie"
+
+#: src/endpaper/shelf.py:674
+msgid "Create"
+msgstr "Anlegen"
+
+#: src/endpaper/shelf.py:687
+msgid "Rename Category"
+msgstr "Kategorie umbenennen"
+
+#: src/endpaper/shelf.py:693
+#, python-brace-format
+msgid "Move “{name}” to the Trash?"
+msgstr "„{name}“ in den Papierkorb legen?"
+
+#: src/endpaper/shelf.py:695
+#, python-brace-format
+msgid "The folder goes to the trash with {count} book. You can restore it from there."
+msgid_plural "The folder goes to the trash with its {count} books. You can restore it from there."
+msgstr[0] "Der Ordner kommt mit {count} Buch in den Papierkorb. Von dort kannst du ihn wiederherstellen."
+msgstr[1] "Der Ordner kommt mit seinen {count} Büchern in den Papierkorb. Von dort kannst du ihn wiederherstellen."
+
+#: src/endpaper/shelf.py:700 src/endpaper/shelf.py:719
+#: src/endpaper/shelf.py:772 src/endpaper/window.py:99
+msgid "Cancel"
+msgstr "Abbrechen"
+
+#: src/endpaper/shelf.py:714
+msgid "Name"
+msgstr "Name"
+
+#: src/endpaper/shelf.py:737
+msgid "EPUB Books"
+msgstr "EPUB-Bücher"
+
+#: src/endpaper/shelf.py:753 src/endpaper/window.py:130
+msgid "Add Books"
+msgstr "Bücher hinzufügen"
+
+#: src/endpaper/shelf.py:768
+msgid "Add to Which Category?"
+msgstr "Zu welcher Kategorie hinzufügen?"
+
+#: src/endpaper/shelf.py:801
+#, python-brace-format
+msgid "{count} book added."
+msgid_plural "{count} books added."
+msgstr[0] "{count} Buch hinzugefügt."
+msgstr[1] "{count} Bücher hinzugefügt."
+
+#: src/endpaper/shelf.py:809
+msgid "Choose Library Folder"
+msgstr "Bibliotheksordner wählen"
+
+#: src/endpaper/window.py:98
+msgid "Open Link in Browser?"
+msgstr "Link im Browser öffnen?"
+
+#: src/endpaper/window.py:127
+msgid "Bookshelf"
+msgstr "Bücherregal"
+
+#: src/endpaper/window.py:132
+msgid "Pin or Unpin the Book"
+msgstr "Buch anpinnen oder lösen"
+
+#: src/endpaper/window.py:133
+msgid "Rename the Book"
+msgstr "Buch umbenennen"
+
+#: src/endpaper/window.py:134
+msgid "Move the Book to the Trash"
+msgstr "Buch in den Papierkorb legen"
+
+#: src/endpaper/window.py:135
+msgid "Move the Book to the Previous Category"
+msgstr "Buch in die vorherige Kategorie verschieben"
+
+#: src/endpaper/window.py:136
+msgid "Move the Book to the Next Category"
+msgstr "Buch in die nächste Kategorie verschieben"
+
+#: src/endpaper/window.py:137
+msgid "Book Menu"
+msgstr "Buchmenü"
+
+#: src/endpaper/window.py:141
+msgid "Reading"
+msgstr "Lesen"
+
+#: src/endpaper/window.py:147
+msgid "Larger Text"
+msgstr "Größerer Text"
+
+#: src/endpaper/window.py:148
+msgid "Smaller Text"
+msgstr "Kleinerer Text"
+
+#: src/endpaper/window.py:149
+msgid "Normal Text Size"
+msgstr "Normale Textgröße"
+
+#: src/endpaper/window.py:150
+msgid "Back to the Shelf"
+msgstr "Zurück zum Regal"
+
+#: src/endpaper/window.py:154
+msgid "General"
+msgstr "Allgemein"
+
+#: src/endpaper/window.py:155
+msgid "Close Window"
+msgstr "Fenster schließen"
+
+#: src/endpaper/window.py:155
+msgid "Quit"
+msgstr "Beenden"

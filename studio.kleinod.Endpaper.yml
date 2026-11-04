@@ -1,0 +1,27 @@
+# For CI and the release bundles on GitHub; this is not a Flathub manifest.
+app-id: studio.kleinod.Endpaper
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: endpaper
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # The library is a freely chosen folder (Nextcloud/Syncthing too) that Endpaper watches for
+  # changes from outside. Deliberately no --share=network: books can never reach the internet.
+  - --filesystem=home
+
+modules:
+  - name: endpaper
+    buildsystem: meson
+    sources:
+      - type: dir
+        path: .
+        skip:
+          - testbooks
+          - prototype
+          - build-dir
+          - .flatpak-builder

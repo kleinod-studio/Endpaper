@@ -4,6 +4,7 @@ import './foliate-js/view.js'
 import { adapt, audit } from './contrast.js'
 import { createMarks } from './marks.js'
 import { createPeek } from './peek.js'
+import { createFields } from './fields.js'
 
 const post = (type, data = {}) =>
     window.webkit.messageHandlers.endpaper.postMessage(JSON.stringify({ type, ...data }))
@@ -41,6 +42,7 @@ const FONT = { serif: 'serif', 'sans-serif': 'sans-serif' }
 let view = null
 let marks = null
 let peek = null
+let fields = null
 let settings = null
 const blocked = []
 
@@ -68,8 +70,25 @@ const css = () => {
     figure { break-inside: avoid !important; }
     /* Footnotes are shown in the popup at their mark, not in the running text. */
     [data-endpaper-note] { display: none !important; }
-    /* Answer fields in study editions: what is typed there would be lost when the book closes. */
-    textarea, input, select, button { display: none !important; }
+    /* Answer fields in study editions are saved in the notes file. Other controls would lose what is done with them. */
+    input[type]:not([type="checkbox"]):not([type="text"]), select, button { display: none !important; }
+    textarea, input[type="text"], input:not([type]) {
+        display: block !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
+        margin: .5em 0 !important;
+        padding: .5em .7em !important;
+        border: 1px solid rgba(128, 128, 128, .45) !important;
+        border-radius: 8px !important;
+        background: rgba(128, 128, 128, .08) !important;
+        color: ${theme.fg} !important;
+        font: inherit !important;
+        line-height: 1.4 !important;
+        visibility: visible !important;
+    }
+    textarea { min-height: 4.2em !important; resize: none !important; overflow: hidden !important; }
+    textarea:focus, input:focus { outline: 2px solid rgba(53, 132, 228, .7) !important; outline-offset: 1px; }
+    input[type="checkbox"] { width: 1.1em; height: 1.1em; vertical-align: -.1em; margin-inline-end: .4em; }
     `
 }
 
@@ -113,7 +132,8 @@ const flattenToc = (items, depth = 0, out = []) => {
 // Page turning
 const onKeydown = e => {
     if (e.ctrlKey || e.altKey || e.metaKey) return
-    if (e.target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName ?? '')) return
+    // localName: in a book's XHTML, tagName is in lower case.
+    if (e.target?.isContentEditable || /^(input|textarea|select)$/.test(e.target?.localName ?? '')) return
     const paged = settings.flow === 'paginated'
     switch (e.key) {
         case 'ArrowRight': case 'PageDown': view?.goRight(); break
@@ -122,7 +142,7 @@ const onKeydown = e => {
         case 'ArrowUp': if (!paged) return; view?.prev(); break
         case ' ': if (e.shiftKey) view?.prev(); else view?.next(); break
         case 'Home': view?.goTo(0); break
-        case 'BackSpace': view?.history.back(); break
+        case 'Backspace': view?.history.back(); break
         default: return
     }
     e.preventDefault()
@@ -160,6 +180,7 @@ window.endpaper = {
             const blob = await (await fetch(url)).blob()
             view = document.createElement('foliate-view')
             marks = createMarks(view, post)
+            fields = createFields(view, post)
             peek = createPeek(view, {
                 theme: () => THEMES[settings.theme],
                 isMarking: () => marks.marking,
@@ -178,6 +199,7 @@ window.endpaper = {
                 doc.addEventListener('wheel', onWheel, { passive: false })
                 marks.attach(doc)
                 peek.attach(doc, index)
+                fields.attach(doc, index)
                 adaptColors(doc)
             })
             view.addEventListener('external-link', e => {
@@ -301,6 +323,42 @@ window.endpaper = {
     },
     goToIndex: index => view.goTo(index),
     sections: () => view.book.sections.map(s => ({ linear: s.linear, size: s.size })),
+    setAnswers: answers => fields?.setAnswers(answers),
+    // For the tests: what a person does in a field, and what is in it.
+    fieldInput(selector, value) {
+        const element = view.renderer.getContents()[0].doc.querySelector(selector)
+        if (element.type === 'checkbox') element.checked = value
+        else element.value = value
+        element.dispatchEvent(new Event(element.type === 'checkbox' ? 'change' : 'input', { bubbles: true }))
+    },
+    fieldState(selector) {
+        const element = view.renderer.getContents()[0].doc.querySelector(selector)
+        return {
+            value: element.value,
+            checked: element.checked,
+            shown: element.getClientRects().length > 0,
+            onPage: (() => {
+                const frame = element.ownerDocument.defaultView.frameElement.getBoundingClientRect()
+                const { left, right } = element.getBoundingClientRect()
+                return left + frame.left >= 0 && right + frame.left <= window.innerWidth
+            })(),
+            windowHeight: window.innerHeight,
+            height: element.offsetHeight,
+            scroll: element.scrollHeight,
+        }
+    },
+    // A key pressed in a field or, without selector, in the text. True if the app took it for itself.
+    keyIn(selector, key) {
+        const doc = view.renderer.getContents()[0].doc
+        const target = selector ? doc.querySelector(selector) : doc.body
+        const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+        target.dispatchEvent(event)
+        return event.defaultPrevented
+    },
+    fieldFocus(selector, on) {
+        const element = view.renderer.getContents()[0].doc.querySelector(selector)
+        element.dispatchEvent(new FocusEvent(on ? 'focusin' : 'focusout', { bubbles: true }))
+    },
     peekState: () => peek?.state,
     peekHide: () => peek?.hide(),
     peekGo: () => peek?.clickGo(),

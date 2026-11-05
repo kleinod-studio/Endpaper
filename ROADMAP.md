@@ -33,8 +33,8 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 - [x] Marks across pages
 - [x] Notes saved as readable `.notes.md` files beside the book
 - [x] Undo and redo for changes to marks
-- [ ] Open in Typecase
 - [x] Previews of footnotes and references in a small popup
+- [x] Answer fields in study editions, saved in the notes file
 
 ## Phase 3: Search
 
@@ -45,6 +45,12 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 - [ ] Search by meaning, in German and English, with a small open-source model
 - [ ] If the quality convinces: short answers with a small language model, based only on your books, with every source to jump to
 - [ ] Models run locally only, and the app stays without network access
+
+## Later: Endpaper and Typecase together
+
+- [ ] The two apps can talk to each other
+- [ ] Open a book's notes in Typecase
+- [ ] Typecase's EPUB export can save straight into the Endpaper library
 
 ## Non-goals
 

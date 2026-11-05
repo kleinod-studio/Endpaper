@@ -77,6 +77,7 @@ class NotesPanel(Gtk.Box):
         self.on_only_notes = on_only_notes
         self.shown_anyway: set[str] = set()  # asked for by name, even if the switch would hide it
         self.remove_dialog = None
+        self.missing_answers: set[str] = set()  # answers whose field is not in the book any more
         self.notes = None
         self.rows: list[_NoteRow] = []
         self.cards: dict[str, Gtk.Box] = {}
@@ -113,6 +114,7 @@ class NotesPanel(Gtk.Box):
         self.flush()
         self.notes = notes
         self.shown_anyway.clear()
+        self.missing_answers = set()
         self.rebuild()
 
     def flush(self) -> None:
@@ -187,13 +189,21 @@ class NotesPanel(Gtk.Box):
         add = getattr(card, "add_button", None)
         card.insert_child_after(row, add.get_prev_sibling()) if add else card.append(row)
 
+    def set_missing_answers(self, fields) -> None:
+        self.missing_answers = set(fields)
+        self.rebuild()
+
     def _add_loose(self) -> None:
         loose = self.notes.loose
         conflicts = conflict_paths_for(self.notes.book_path)
-        if not loose and not conflicts:
+        answers = [a for a in self.notes.answers if a.field in self.missing_answers]
+        if not loose and not conflicts and not answers:
             return
         self.content.append(Gtk.Label(label=_("Not Assigned to a Mark"), xalign=0, css_classes=["heading"], margin_top=8))
         for text in loose:
+            self.content.append(Gtk.Label(label=text, xalign=0, wrap=True, selectable=True, css_classes=["card", "note-loose"]))
+        for answer in answers:
+            text = f"{answer.question}\n\n{answer.text}" if answer.question else answer.text
             self.content.append(Gtk.Label(label=text, xalign=0, wrap=True, selectable=True, css_classes=["card", "note-loose"]))
         for path in conflicts:
             self.content.append(Gtk.Label(

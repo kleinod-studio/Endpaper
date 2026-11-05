@@ -180,6 +180,54 @@ def make_notes_epub(path: Path):
     return path
 
 
+def make_answers_epub(path: Path):
+    """Fields of a study edition, in text made up for this test."""
+    one = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><title>One</title></head><body><h1>One</h1>'
+        '<p>What is the first question?</p>'
+        '<div><label for="a1" style="display:none">Answer</label><textarea id="a1" name="field-1"></textarea></div>'
+        '<p>And the second?</p><div><textarea id="a2" name="twin"></textarea></div>'
+        '<p>The same name once more?</p><div><textarea id="a3" name="twin">Words from the book</textarea></div>'
+        '<div><input type="checkbox" id="c1" name="tick"/><label for="c1">I have read this</label></div>'
+        '<p>A line?</p><input id="t1" name="line" type="text"/>'
+        '<input id="r1" name="radio" type="radio"/><select id="s1"><option>x</option></select><button id="b1">Press</button>'
+        + "".join(f"<p>Filler {n} with some words to fill the page for a while.</p>" for n in range(30)) +
+        '</body></html>'
+    )
+    two = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><title>Two</title></head><body><h1>Two</h1>'
+        '<p>Another question?</p><textarea id="b2" name="field-2"></textarea></body></html>'
+    )
+    items, spine = [], []
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+        z.writestr(
+            "META-INF/container.xml",
+            '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+            '<rootfiles><rootfile full-path="OEBPS/p.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
+        )
+        for name, text in (("one", one), ("two", two)):
+            z.writestr(f"OEBPS/{name}.xhtml", text)
+            items.append(f'<item id="{name}" href="{name}.xhtml" media-type="application/xhtml+xml"/>')
+            spine.append(f'<itemref idref="{name}"/>')
+        z.writestr(
+            "OEBPS/nav.xhtml",
+            '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'
+            '<body><nav epub:type="toc"><ol><li><a href="one.xhtml">One</a></li><li><a href="two.xhtml">Two</a></li></ol></nav></body></html>',
+        )
+        items.append('<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>')
+        z.writestr(
+            "OEBPS/p.opf",
+            '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="i">'
+            '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="i">urn:answers</dc:identifier>'
+            '<dc:title>Study Book</dc:title><dc:language>en</dc:language></metadata>'
+            f'<manifest>{"".join(items)}</manifest><spine>{"".join(spine)}</spine></package>',
+        )
+    return path
+
+
 def make_hostile_epub(path: Path, base: str):
     """A book that tries everything to run code and to reach the outside. base: a local server that records requests."""
     leak = (

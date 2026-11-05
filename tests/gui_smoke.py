@@ -36,7 +36,7 @@ from gi.repository import Adw, GLib, Graphene, Gtk  # noqa: E402
 from endpaper import config, library  # noqa: E402
 from endpaper.main import EndpaperApplication  # noqa: E402
 from endpaper.notes import MARK_COLORS, NotesFile, NotesKept
-from make_epub import make_epub, make_figures_epub, make_hostile_epub, make_notes_epub, make_styled_epub  # noqa: E402
+from make_epub import make_epub, make_figures_epub, make_hostile_epub, make_answers_epub, make_notes_epub, make_styled_epub  # noqa: E402
 
 failures = []
 passed = 0
@@ -866,6 +866,119 @@ def scenario(app, window):
     spin(0.6)
     check(not peek()["visible"], "while marking, nothing pops up")
     reader.stop_marking()
+    window.navigation.pop()
+    wait_for(lambda: window.navigation.get_visible_page() is shelf)
+    shelf.open_card(was_book)
+    check(wait_for(lambda: reader.opened), "back to the other book")
+    wait_for(lambda: (js(reader, "endpaper.diagnostics()") or {}).get("cfi"))
+
+    print("Answer fields")
+    window.navigation.pop()
+    wait_for(lambda: window.navigation.get_visible_page() is shelf)
+    study_path = make_answers_epub(LIB / "study.epub")
+    before_bytes = study_path.read_bytes()
+    check(wait_for(lambda: study_path in shelf.sections[LIB].cards), "a study edition")
+    study = shelf.sections[LIB].cards[study_path]
+    wait_for(lambda: study.info is not None)
+    def open_study():
+        shelf.open_card(study)
+        check(wait_for(lambda: reader.opened), "opens")
+        wait_for(lambda: (js(reader, "endpaper.diagnostics()") or {}).get("cfi"))
+    def field(selector):
+        return js(reader, f"endpaper.fieldState({json.dumps(selector)})")
+    def type_in(selector, value):
+        js(reader, f"endpaper.fieldInput({json.dumps(selector)}, {json.dumps(value)})")
+    def study_notes():
+        return NotesFile(study_path, "Study Book")
+    def saved_answer(key):
+        return next((a for a in study_notes().answers if a.field.endswith(key)), None)
+    open_study()
+    check(field("#a1")["shown"] and field("#c1")["shown"] and field("#t1")["shown"], "its text fields, tick boxes and lines are there")
+    check(not field("#r1")["shown"] and not field("#s1")["shown"] and not field("#b1")["shown"], "other controls, which cannot be saved, are not")
+    place_before = js(reader, "endpaper.diagnostics()")["cfi"]
+    typed_keys = (" ", "ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "Backspace")
+    for selector in ("#a1", "#t1"):
+        taken = [key for key in typed_keys if js(reader, f"endpaper.keyIn({json.dumps(selector)}, {json.dumps(key)})")]
+        check(taken == [], f"typing in {selector}, no key turns the page ({taken})")
+    spin(0.3)
+    check(js(reader, "endpaper.diagnostics()")["cfi"] == place_before, "and the page stays")
+    check(js(reader, 'endpaper.keyIn(null, "ArrowRight")') is True, "outside of a field, keys still turn the page")
+    wait_for(lambda: js(reader, "endpaper.diagnostics()")["cfi"] != place_before, 3)
+    js(reader, "endpaper.prev()")
+    wait_for(lambda: js(reader, "endpaper.diagnostics()")["cfi"] == place_before, 3)
+    type_in("#a1", "My first answer")
+    check(wait_for(lambda: saved_answer("#field-1") is not None, 3), "an answer is saved while typing")
+    check(saved_answer("#field-1").question == "What is the first question?", "with its question")
+    type_in("#a2", "Twin one")
+    type_in("#a3", "Twin two")
+    type_in("#t1", "A line")
+    js(reader, "endpaper.fieldInput('#c1', true)")
+    check(wait_for(lambda: saved_answer("#tick") is not None, 3), "a tick too")
+    check(saved_answer("#tick").question == "I have read this", "named by its label")
+    wait_for(lambda: saved_answer("#twin~2") is not None, 3)
+    check(saved_answer("#twin").text == "Twin one" and saved_answer("#twin~2").text == "Twin two", "two fields with one name stay apart")
+    long_answer = "A long answer. " * 40
+    tall = field("#a1")["height"]
+    type_in("#a1", long_answer)
+    check(wait_for(lambda: field("#a1")["height"] > tall and field("#a1")["height"] >= field("#a1")["scroll"], 3), "the field grows with the text")
+    check(wait_for(lambda: field("#a1")["onPage"], 3), "and stays on the page")
+    filler_answer = "A very long answer. " * 900
+    type_in("#a1", filler_answer)
+    check(wait_for(lambda: field("#a1")["onPage"], 3), "also when it no longer fits there")
+    longest = field("#a1")
+    check(longest["height"] <= longest["windowHeight"] * 0.6 + 1 and longest["scroll"] > longest["height"], "then it scrolls inside, so that nothing is cut off")
+    type_in("#a1", "Typed just before closing")
+    window.navigation.pop()
+    check(wait_for(lambda: window.navigation.get_visible_page() is shelf), "closing the book at once")
+    check(saved_answer("#field-1").text == "Typed just before closing", "loses nothing")
+    check(study_path.read_bytes() == before_bytes, "and the book itself is never changed")
+    open_study()
+    check(wait_for(lambda: field("#a1")["value"] == "Typed just before closing", 3), "the answer is there again")
+    check(field("#a2")["value"] == "Twin one" and field("#a3")["value"] == "Twin two" and field("#t1")["value"] == "A line", "all of them")
+    check(field("#c1")["checked"] is True, "and the tick")
+    js(reader, "endpaper.goToIndex(1)")
+    wait_for(lambda: "Two" in js(reader, "endpaper.diagnostics()")["visibleText"], 5)
+    type_in("#b2", "In the next chapter")
+    check(wait_for(lambda: saved_answer("#field-2") is not None, 3), "fields of other chapters work")
+    js(reader, "endpaper.goToIndex(0)")
+    check(wait_for(lambda: "One" in js(reader, "endpaper.diagnostics()")["visibleText"], 5) and wait_for(lambda: field("#a1")["value"] == "Typed just before closing", 3), "and turning back still shows the answer")
+    study_file = study_path.with_name("study.notes.md")
+    reader._save_answers()
+    study_file.write_text(study_file.read_text(encoding="utf-8").replace("Twin one", "Edited elsewhere"), encoding="utf-8")
+    check(wait_for(lambda: field("#a2")["value"] == "Edited elsewhere", 5), "what changes in the file reaches the field")
+    js(reader, "endpaper.fieldInput('#c1', false)")
+    check(wait_for(lambda: saved_answer("#tick") is None, 3), "removing a tick removes it from the file")
+    type_in("#a3", "")
+    check(wait_for(lambda: saved_answer("#twin~2") is None, 3), "an empty field does too")
+    check(wait_for(lambda: field("#a3")["value"] == "", 1), "even with words of the book in it")
+    js(reader, "endpaper.fieldFocus('#a2', true)")
+    check(wait_for(lambda: reader._in_field, 3), "the app knows the cursor is in a field")
+    z_key = reader._on_key(None, Gdk.KEY_z, 0, Gdk.ModifierType.CONTROL_MASK)
+    check(z_key is False, "Ctrl+Z there belongs to the field")
+    js(reader, "endpaper.fieldFocus('#a2', false)")
+    check(wait_for(lambda: not reader._in_field, 3), "and it knows when it left")
+    window.navigation.pop()
+    wait_for(lambda: window.navigation.get_visible_page() is shelf)
+    orphan = '> A question that is gone\n\n<!-- endpaper-answer field=gone.xhtml%23old kind=text -->\nAn answer without a field\n<!-- endpaper-answer-end -->\n'
+    study_file.write_text(study_file.read_text(encoding="utf-8") + "\n" + orphan, encoding="utf-8")
+    open_study()
+    reader.notes_button.set_active(True)
+    panel = reader.notes_panel
+    def panel_texts():
+        found, stack = [], [panel.content]
+        while stack:
+            widget = stack.pop()
+            if isinstance(widget, Gtk.Label):
+                found.append(widget.get_label())
+            child = widget.get_first_child()
+            while child:
+                stack.append(child)
+                child = child.get_next_sibling()
+        return found
+    check(wait_for(lambda: any("An answer without a field" in t for t in panel_texts()), 5), "an answer without a field is shown in the flyout")
+    check(not any("Edited elsewhere" in t for t in panel_texts()), "one with a field is not")
+    check("An answer without a field" in study_file.read_text(encoding="utf-8"), "and it stays in the file")
+    reader.notes_button.set_active(False)
     window.navigation.pop()
     wait_for(lambda: window.navigation.get_visible_page() is shelf)
     shelf.open_card(was_book)

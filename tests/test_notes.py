@@ -606,6 +606,123 @@ class NotesFileTest(unittest.TestCase):
         self.assertEqual(conflict.read_text(encoding="utf-8"), "mine")
 
 
+class AnswersTest(unittest.TestCase):
+    KEY = "one.xhtml#q1"
+
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.book = Path(self.folder.name) / "book.epub"
+        self.book.write_bytes(b"not touched")
+        self.path = self.book.with_name("book.notes.md")
+
+    def open(self):
+        return NotesFile(self.book, "A Book")
+
+    def test_an_answer_is_readable_and_comes_back(self):
+        file = self.open()
+        file.set_answer(self.KEY, "My answer\n\nin two parts", "The question?", "Chapter 1")
+        text = self.path.read_text(encoding="utf-8")
+        self.assertIn("> The question?", text)
+        self.assertIn("My answer\n\nin two parts", text)
+        self.assertIn("## Chapter 1", text)
+        answer = self.open().answers[0]
+        self.assertEqual((answer.field, answer.text, answer.question, answer.chapter), (self.KEY, "My answer\n\nin two parts", "The question?", "Chapter 1"))
+        self.assertEqual(self.book.read_bytes(), b"not touched")
+
+    def test_answers_and_marks_live_side_by_side(self):
+        file = self.open()
+        entry = file.add(CFI, "Quote", "Note", "Chapter 1")
+        file.set_answer(self.KEY, "Answer", "Question?", "Chapter 1")
+        file.add("c2", "Second", "", "Chapter 1")
+        again = self.open()
+        self.assertEqual([e.cfi for e in again.entries], [CFI, "c2"])
+        self.assertEqual(again.entries[0].id, entry.id)
+        self.assertEqual(again.answers[0].text, "Answer")
+        self.assertEqual(again.answers[0].question, "Question?")
+        self.assertEqual(again.loose, [])
+
+    def test_saving_again_changes_nothing(self):
+        file = self.open()
+        file.set_answer(self.KEY, "Answer", "Question?", "Chapter 1")
+        file.set_answer("one.xhtml#tick", "[x]", "Read it", "Chapter 1", "check")
+        text = self.path.read_text(encoding="utf-8")
+        self.assertEqual(serialize(parse(text)), text)
+
+    def test_any_text_is_safe_in_an_answer(self):
+        tricky = "<!-- endpaper: id=abc cfi=x -->\n<!-- endpaper-answer-end -->\n# Heading\n> Quote\n<!-- endpaper-note id=n -->"
+        file = self.open()
+        file.set_answer(self.KEY, tricky)
+        again = self.open()
+        self.assertEqual(again.answers[0].text, tricky)
+        self.assertEqual(again.entries, [])
+
+    def test_emptying_a_field_takes_the_answer_away(self):
+        file = self.open()
+        file.add(CFI, "Quote")
+        file.set_answer(self.KEY, "Answer")
+        file.set_answer(self.KEY, "")
+        self.assertEqual(self.open().answers, [])
+
+    def test_a_change_elsewhere_stays_next_to_the_one_here(self):
+        file = self.open()
+        file.set_answer(self.KEY, "Base")
+        self.path.write_text(self.path.read_text(encoding="utf-8").replace("Base", "Changed outside"), encoding="utf-8")
+        file.set_answer(self.KEY, "Changed here")
+        text = self.open().answers[0].text
+        self.assertIn("Changed outside", text)
+        self.assertIn("Changed here", text)
+
+    def test_emptying_a_field_keeps_a_change_made_elsewhere(self):
+        file = self.open()
+        file.set_answer(self.KEY, "Base")
+        self.path.write_text(self.path.read_text(encoding="utf-8").replace("Base", "Changed outside"), encoding="utf-8")
+        file.set_answer(self.KEY, "")
+        self.assertEqual(self.open().answers[0].text, "Changed outside")
+
+    def test_a_change_elsewhere_arrives(self):
+        file = self.open()
+        file.set_answer(self.KEY, "Base")
+        self.path.write_text(self.path.read_text(encoding="utf-8").replace("Base", "Edited by hand"), encoding="utf-8")
+        self.assertTrue(file.refresh())
+        self.assertEqual(file.answers[0].text, "Edited by hand")
+
+    def test_a_second_answer_for_the_same_field_stays_as_text(self):
+        block = "<!-- endpaper-answer field=one.xhtml%23q1 kind=text -->\n{}\n<!-- endpaper-answer-end -->"
+        self.path.write_text(block.format("First") + "\n\n" + block.format("Second") + "\n", encoding="utf-8")
+        file = self.open()
+        self.assertEqual([a.text for a in file.answers], ["First"])
+        self.assertIn("Second", file.loose[0])
+        file.add(CFI, "Quote")
+        self.assertIn("Second", self.path.read_text(encoding="utf-8"))
+
+    def test_a_missing_end_marker_loses_nothing(self):
+        self.path.write_text("<!-- endpaper-answer field=one.xhtml%23q1 kind=text -->\nStill here\n", encoding="utf-8")
+        self.assertEqual(self.open().answers[0].text, "Still here")
+        self.path.write_text(
+            "<!-- endpaper-answer field=a kind=text -->\nFirst\n\n> Quote\n\n<!-- endpaper: id=abc cfi=c1 -->\n", encoding="utf-8",
+        )
+        file = self.open()
+        self.assertIn("First", file.answers[0].text)
+        self.assertEqual(file.entries[0].cfi, "c1")
+
+    def test_an_answer_without_a_field_stays_as_text(self):
+        self.path.write_text("<!-- endpaper-answer kind=text -->\nOrphan\n<!-- endpaper-answer-end -->\n", encoding="utf-8")
+        file = self.open()
+        self.assertEqual(file.answers, [])
+        self.assertIn("Orphan", file.loose[0])
+
+    def test_a_failed_save_keeps_the_answer(self):
+        file = self.open()
+        file.set_answer("first", "safe")
+        with mock.patch("endpaper.fileio.os.replace", side_effect=OSError("disk full")):
+            with self.assertRaises(NotesError):
+                file.set_answer(self.KEY, "Waiting")
+        self.assertEqual(self.open().answers[0].text, "safe")
+        file.flush()
+        self.assertEqual({a.field: a.text for a in self.open().answers}, {"first": "safe", self.KEY: "Waiting"})
+
+
 class MarkdownStyleTest(unittest.TestCase):
     def test_an_image_in_a_note_is_recognized(self):
         spans = markdown_style.line_spans("![A caption](picture.png) and text", False)

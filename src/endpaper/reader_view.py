@@ -23,6 +23,7 @@ INDEX_URL = "endpaper://app/index.html"
 ALLOWED_NAVIGATION = ("endpaper:", "blob:", "about:")
 OPENABLE_LINKS = ("http://", "https://", "mailto:")
 SAVE_DELAY_MS = 1500
+ANSWER_SAVE_DELAY_MS = 500
 # The notes flyout, normal and doubled: never narrower than the first number, never wider than the last.
 NOTES_MIN_WIDTH = 300
 NOTES_WIDTH = (0.3, 420)
@@ -136,6 +137,9 @@ class ReaderPage(Adw.NavigationPage):
         self._mark_color = DEFAULT_MARK_COLOR
         self._open_mark = None
         self.remove_dialog = None
+        self._in_field = False  # the cursor is in a field of the book
+        self._unsaved_answers: dict[str, dict] = {}
+        self._answer_timer = 0
         self.book_path: Path | None = None
         self.book_key: str | None = None
         self.opened = False
@@ -354,7 +358,7 @@ class ReaderPage(Adw.NavigationPage):
         focus = self.get_root().get_focus() if self.get_root() else None
         in_notes = focus is not None and focus.is_ancestor(self.notes_panel)
         if keyval in (Gdk.KEY_z, Gdk.KEY_Z) and state & Gdk.ModifierType.CONTROL_MASK:
-            if isinstance(focus, (Gtk.TextView, Gtk.Text)):
+            if isinstance(focus, (Gtk.TextView, Gtk.Text)) or self._in_field:
                 return False  # a text field has its own undo
             self._undo_mark(redo=bool(state & Gdk.ModifierType.SHIFT_MASK))
             return True
@@ -367,7 +371,7 @@ class ReaderPage(Adw.NavigationPage):
                 self.notes_button.set_active(False)
                 return True
             return False
-        if not self.marking or (focus is not None and focus is not self.web):
+        if not self.marking or self._in_field or (focus is not None and focus is not self.web):
             return False
         if keyval == Gdk.KEY_F10 and state & Gdk.ModifierType.SHIFT_MASK:
             self._js('endpaper.markKey("menu")')
@@ -455,6 +459,40 @@ class ReaderPage(Adw.NavigationPage):
     def show_mark_notes(self, entry_id: str, new_note: bool = False):
         self.notes_button.set_active(True)
         self.notes_panel.show_entry(entry_id, new_note)
+
+    def _send_answers(self):
+        if self.notes:
+            self._js(f"endpaper.setAnswers({json.dumps({a.field: a.text for a in self.notes.answers})})")
+
+    def _on_answer(self, message):
+        """Every keystroke comes here at once, so that nothing is left behind when the book closes."""
+        self._unsaved_answers[message["field"]] = message
+        if not self._answer_timer:
+            self._answer_timer = GLib.timeout_add(ANSWER_SAVE_DELAY_MS, self._on_answer_timer)
+
+    def _on_answer_timer(self):
+        self._answer_timer = 0
+        self._save_answers()
+        return GLib.SOURCE_REMOVE
+
+    def _save_answers(self):
+        if self._answer_timer:
+            GLib.source_remove(self._answer_timer)
+            self._answer_timer = 0
+        unsaved, self._unsaved_answers = self._unsaved_answers, {}
+        if not self.notes:
+            return
+        merged = False
+        for key, message in unsaved.items():
+            try:
+                self.notes.set_answer(key, message["text"], message.get("question", ""), message.get("chapter"), message.get("kind", "text"))
+            except NotesError:
+                self._save_failed()
+            current = next((a for a in self.notes.answers if a.field == key), None)
+            merged = merged or (current is not None and current.text.strip() != message["text"].strip())
+        if merged:  # changed elsewhere as well: the field shows both versions now
+            self._send_answers()
+        self.notes_panel.dirty = True
 
     def _on_mark_range(self, message):
         if not self.notes:
@@ -593,6 +631,7 @@ class ReaderPage(Adw.NavigationPage):
             self.notes_panel.flush()  # what was just typed goes first, merged with the change
             if self.notes.refresh():
                 self._send_marks()
+                self._send_answers()
                 self._notes_changed()
         except NotesError:
             pass  # the next change or look tries again; nothing is written over an unread file
@@ -608,6 +647,7 @@ class ReaderPage(Adw.NavigationPage):
         self.notes_button.set_active(False)
 
     def _flush_notes(self):
+        self._save_answers()
         if self.notes:
             self.notes_panel.flush()
             try:
@@ -860,6 +900,7 @@ class ReaderPage(Adw.NavigationPage):
             self._fill_toc(message["toc"])
             self._highlight_toc(self._last_toc_href)
             self._send_marks()
+            self._send_answers()
             self._update_marking()
             if self.on_opened:
                 self.on_opened()
@@ -879,6 +920,12 @@ class ReaderPage(Adw.NavigationPage):
             self._on_mark_range(message)
         elif kind == "mark-clicked":
             self._on_mark_clicked(message)
+        elif kind == "answer":
+            self._on_answer(message)
+        elif kind == "field-focus":
+            self._in_field = message["active"]
+        elif kind == "answers-missing":
+            self.notes_panel.set_missing_answers(message["fields"])
         elif kind == "external-link":
             href = message["href"]
             if href.startswith(OPENABLE_LINKS):
@@ -891,6 +938,7 @@ class ReaderPage(Adw.NavigationPage):
     def open_book(self, path: Path, key: str, title: str) -> None:
         self.book_path, self.book_key = path, key
         self.opened = False
+        self._in_field = False
         self.set_title(title)
         self.window_title.set_title(title)
         self.window_title.set_subtitle("")

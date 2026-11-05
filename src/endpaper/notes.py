@@ -18,6 +18,14 @@ and marks are saved to a conflict file beside it instead.
 
     <!-- endpaper: id=a1b2c3d4 cfi=epubcfi(/6/4!/4/2) color=yellow style=highlight -->
 
+Answers typed into a book's own fields stand in the chapter they belong to, as plain text:
+
+    > The question before the field
+
+    <!-- endpaper-answer field=chapter1.xhtml%23q1 kind=text -->
+    The answer.
+    <!-- endpaper-answer-end -->
+
 Older files have the text of a single note directly between the quote and the anchor. They stay
 readable, and a mark takes the current form when the file is saved.
 """
@@ -39,6 +47,10 @@ HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 VALID_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 NOTE_OPEN = re.compile(r"^<!--\s*endpaper-note\b(?!-)(.*?)-->\s*$")
 NOTE_END = re.compile(r"^<!--\s*endpaper-note-end\s*-->\s*$")
+ANSWER_OPEN = re.compile(r"^<!--\s*endpaper-answer\b(?!-)(.*?)-->\s*$")
+ANSWER_END = re.compile(r"^<!--\s*endpaper-answer-end\s*-->\s*$")
+FIELD_SAFE = "/#~.-_"
+CONFLICT_RULE = "\n\n---\n\n"
 # Inside a note only these lines need a backslash: all other Markdown stays as it is.
 IN_NOTE_NEEDS_ESCAPE = re.compile(r"^(\\*<!--\s*endpaper)")
 IN_NOTE_ESCAPED = re.compile(r"^\\(\\*<!--\s*endpaper)")
@@ -97,6 +109,18 @@ class Loose:
     """Text that belongs to no mark: written by hand, or a mark that lost its anchor."""
 
     text: str
+
+
+@dataclass
+class Answer:
+    """What was typed into a field of the book. The field is named by its chapter file and its name."""
+
+    field: str
+    text: str
+    question: str = ""
+    chapter: str | None = None
+    kind: str = "text"  # "check": a tick box, with the text [x]
+    extra: dict[str, str] = field(default_factory=dict)  # settings of a newer version must survive
 
 
 def _new_id(taken) -> str:
@@ -214,6 +238,8 @@ def _entry_from(lines: list[str], attributes: dict[str, str], chapter: str | Non
 def parse(text: str) -> list:
     """Any text is valid: what is not understood becomes Loose text."""
     blocks, pending, seen, chapter, in_note = [], [], set(), None, False
+    answer_lines, answer_attributes, answer_open, attributes_of_answer = [], None, "", {}
+    seen_fields = set()
 
     def flush():
         lines = _trimmed(pending)
@@ -221,7 +247,43 @@ def parse(text: str) -> list:
             blocks.append(Loose("\n".join(lines)))
         pending.clear()
 
+    def finish_answer(ended: bool):
+        nonlocal answer_attributes
+        key = unquote(answer_attributes.get("field", ""))
+        raw = [answer_open, *answer_lines, *(["<!-- endpaper-answer-end -->"] if ended else [])]
+        answer_attributes, lines = None, answer_lines[:]
+        answer_lines.clear()
+        if not key or key in seen_fields:
+            pending.extend(raw)  # also a second answer for the same field: it stays as it is
+            return
+        seen_fields.add(key)
+        while pending and not pending[-1].strip():
+            pending.pop()
+        start = len(pending)
+        while start and pending[start - 1].startswith(">"):
+            start -= 1
+        question = [re.sub(r"^> ?", "", quoted) for quoted in pending[start:]]
+        del pending[start:]
+        flush()
+        blocks.append(Answer(
+            key, "\n".join(IN_NOTE_ESCAPED.sub(r"\1", body) for body in _trimmed(lines)), "\n".join(question), chapter,
+            attributes_of_answer.get("kind", "text"),
+            {k: unquote(v) for k, v in attributes_of_answer.items() if k not in ("field", "kind")},
+        ))
+
     for line in text.removeprefix("﻿").splitlines():
+        if answer_attributes:
+            if ANSWER_END.match(line):
+                finish_answer(True)
+                continue
+            if not (ANCHOR.match(line) or ANSWER_OPEN.match(line)):
+                answer_lines.append(line)
+                continue
+            finish_answer(False)  # its end marker went missing
+        if not in_note and (opening := ANSWER_OPEN.match(line)):
+            attributes_of_answer = _read_attributes(opening[1])
+            answer_attributes, answer_open = attributes_of_answer or {"": ""}, line
+            continue
         attributes = _read_anchor(line)
         if in_note:  # a heading in a note is Markdown of the note. An anchor means its end marker went missing.
             in_note = not (NOTE_END.match(line) or attributes)
@@ -243,6 +305,8 @@ def parse(text: str) -> list:
                 chapter = title
         else:
             pending.append(line)  # also a second mark with the same id: it stays as it is
+    if answer_attributes:
+        finish_answer(False)
     flush()
     return blocks
 
@@ -264,6 +328,18 @@ def _write_entry(entry: Entry) -> str:
     return "\n\n".join(parts)
 
 
+def _write_answer(answer: Answer) -> str:
+    parts = []
+    if answer.question:
+        parts.append("\n".join(f"> {line}".rstrip() for line in answer.question.splitlines()))
+    attributes = {"field": url_quote(answer.field, safe=FIELD_SAFE), "kind": answer.kind}
+    attributes.update((key, url_quote(value, safe=FIELD_SAFE)) for key, value in answer.extra.items())
+    opening = " ".join(f"{k}={v}" for k, v in attributes.items())
+    body = "\n".join(IN_NOTE_NEEDS_ESCAPE.sub(r"\\\1", line) for line in _trimmed(answer.text.splitlines()))
+    parts.append(f"<!-- endpaper-answer {opening} -->\n{body}\n<!-- endpaper-answer-end -->")
+    return "\n\n".join(parts)
+
+
 def serialize(blocks: list) -> str:
     parts = []
     for block in blocks:
@@ -271,6 +347,8 @@ def serialize(blocks: list) -> str:
             parts.append(f"{'#' * block.level} {block.text}")
         elif isinstance(block, Loose):
             parts.append(block.text)
+        elif isinstance(block, Answer):
+            parts.append(_write_answer(block))
         else:
             parts.append(_write_entry(block))
     return "\n\n".join(parts) + "\n" if parts else ""
@@ -296,6 +374,25 @@ def _entries(blocks: list) -> list[Entry]:
 
 def _find(blocks: list, entry_id: str) -> Entry | None:
     return next((e for e in _entries(blocks) if e.id == entry_id), None)
+
+
+def _find_answer(blocks: list, key: str) -> Answer | None:
+    return next((b for b in blocks if isinstance(b, Answer) and b.field == key), None)
+
+
+def _apply_answer(blocks: list, answer: Answer, old_text: str) -> None:
+    current = _find_answer(blocks, answer.field)
+    if not answer.text.strip():
+        if current is not None and current.text == old_text:
+            blocks.remove(current)  # what was changed elsewhere meanwhile stays
+    elif current is None:
+        _insert(blocks, answer)
+    elif current.text in (old_text, answer.text):
+        current.text = answer.text
+    elif answer.kind == "check":
+        current.text = answer.text  # a tick holds nothing that could get lost
+    else:  # both versions stay
+        current.text += CONFLICT_RULE + answer.text
 
 
 def _apply_add(blocks: list, entry: Entry) -> None:
@@ -516,6 +613,19 @@ class NotesFile:
                 lambda: self._take_back_note(entry_id, kept),
             )
         self._change(_apply_remove_note, copy.deepcopy(base), note_id, note.text)
+
+    @property
+    def answers(self) -> list[Answer]:
+        return [b for b in self.blocks if isinstance(b, Answer)]
+
+    def set_answer(self, key: str, text: str, question: str = "", chapter: str | None = None, kind: str = "text") -> None:
+        """An empty answer takes its block away. Typing has its own undo in the field, so nothing is recorded."""
+        current = _find_answer(self.blocks, key)
+        old_text = current.text if current else ""
+        if text.strip() == old_text.strip():
+            return
+        chapter = " ".join(chapter.split()) or None if chapter else None
+        self._change(_apply_answer, Answer(key, text, " ".join(question.split()), chapter, kind), old_text)
 
     def refresh(self) -> bool:
         """Takes over what other programs changed. True if anything did."""

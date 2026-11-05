@@ -15,6 +15,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Soup, WebKit
 
 from . import config
 from .notes import NotesError, NotesFile
+from .notes_panel import NotesPanel
 
 WEB_DIR = Path(__file__).parent / "web"
 BOOK_PATH = "book"
@@ -62,6 +63,12 @@ def _install_css() -> None:
             box-shadow: 0 0 0 1px alpha(currentColor, 0.1), 0 3px 10px alpha(black, 0.2);
         }
         .mark-bar > viewport > box { padding: 3px 6px; }
+        .note-card { padding: 6px; }
+        .note-card > button { font-weight: normal; padding: 6px; }
+        .note-loose { padding: 10px; }
+        .note-view { background: none; font-size: 0.95em; }
+        .note-row { padding: 0 6px; }
+        .note-quote { font-style: italic; }
         .mark-bar button.suggested-action { min-height: 26px; padding: 0 10px; }
         """
     )
@@ -112,6 +119,9 @@ class ReaderPage(Adw.NavigationPage):
         self.back_button.connect("clicked", lambda _b: self._js("endpaper.back()"))
         header.pack_start(self.back_button)
 
+        self.notes_button = Gtk.ToggleButton(icon_name="sidebar-show-right-symbolic", tooltip_text=_("Notes"))
+        self.notes_button.update_property([Gtk.AccessibleProperty.LABEL], [_("Notes")])
+        header.pack_end(self.notes_button)
         settings_button = Gtk.MenuButton(icon_name="font-select-symbolic", tooltip_text=_("Text and Layout"))
         settings_button.set_popover(self._build_settings())
         header.pack_end(settings_button)
@@ -128,7 +138,9 @@ class ReaderPage(Adw.NavigationPage):
         self.prev_button = self._page_button("go-previous-symbolic", _("Previous Page"), Gtk.Align.START, "endpaper.prev()")
         self.next_button = self._page_button("go-next-symbolic", _("Next Page"), Gtk.Align.END, "endpaper.next()")
 
-        self.split = Adw.OverlaySplitView(sidebar=sidebar, content=self.overlay, show_sidebar=False)
+        content = Adw.ToolbarView(content=self.overlay)
+        content.add_top_bar(header)
+        self.split = Adw.OverlaySplitView(sidebar=self._sidebar_page(_("Table of Contents"), sidebar), content=content, show_sidebar=False)
         self.toc_button.bind_property(
             "active", self.split, "show-sidebar", GObject.BindingFlags.BIDIRECTIONAL
         )
@@ -139,9 +151,22 @@ class ReaderPage(Adw.NavigationPage):
         escape.connect("key-pressed", self._on_key)
         self.add_controller(escape)
 
-        view = Adw.ToolbarView(content=self.split)
-        view.add_top_bar(header)
-        self.set_child(view)
+        self.notes_panel = NotesPanel(self._go_to_mark, self._put_mark, self._save_failed)
+        self.notes_split = Adw.OverlaySplitView(
+            content=self.split, sidebar=self._sidebar_page(_("Notes"), self.notes_panel), sidebar_position=Gtk.PackType.END, show_sidebar=False,
+            min_sidebar_width=300, max_sidebar_width=420, sidebar_width_fraction=0.3,
+        )
+        self.notes_button.bind_property("active", self.notes_split, "show-sidebar", GObject.BindingFlags.BIDIRECTIONAL)
+        self.notes_split.connect("notify::show-sidebar", self._on_notes_shown)
+
+        self.set_child(self.notes_split)
+
+    def _sidebar_page(self, title: str, child: Gtk.Widget) -> Gtk.Widget:
+        """A sidebar reaches up to the window's edge and has a title bar of its own, as in Typecase."""
+        header = Adw.HeaderBar(title_widget=Adw.WindowTitle(title=title), show_back_button=False)
+        page = Adw.ToolbarView(content=child)
+        page.add_top_bar(header)
+        return page
 
     def _color_buttons(self, on_toggled) -> dict[str, Gtk.ToggleButton]:
         buttons, group = {}, None
@@ -181,8 +206,8 @@ class ReaderPage(Adw.NavigationPage):
         )
 
     def _build_mark_popover(self) -> Gtk.Popover:
-        """What can be done with a mark that exists: another color, a note, or remove it."""
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=6, margin_bottom=6, margin_start=6, margin_end=6)
+        """What can be done with a mark that exists: another color, remove it, or add a note."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         row = Gtk.Box(spacing=2)
         self.popover_colors = self._color_buttons(self._on_popover_color)
         for button in self.popover_colors.values():
@@ -193,17 +218,16 @@ class ReaderPage(Adw.NavigationPage):
         self.popover_underline.update_property([Gtk.AccessibleProperty.LABEL], [_("Underline")])
         self.popover_underline.connect("toggled", self._on_popover_underline)
         row.append(self.popover_underline)
-        spacer = Gtk.Box(hexpand=True)
-        row.append(spacer)
-        self.popover_remove = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text=_("Remove Mark"), css_classes=["flat"])
+        self.popover_remove = Gtk.Button(
+            icon_name="user-trash-symbolic", tooltip_text=_("Remove Mark"), css_classes=["flat", "mark-choice"], margin_start=4
+        )
         self.popover_remove.update_property([Gtk.AccessibleProperty.LABEL], [_("Remove Mark")])
         self.popover_remove.connect("clicked", self._on_popover_remove)
         row.append(self.popover_remove)
         box.append(row)
-        box.append(Gtk.Label(label=_("Note"), xalign=0, css_classes=["caption", "dim-label"]))
-        self.popover_note = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=6, bottom_margin=6, left_margin=6, right_margin=6)
-        self.popover_note.update_property([Gtk.AccessibleProperty.LABEL], [_("Note")])
-        box.append(Gtk.ScrolledWindow(child=self.popover_note, min_content_width=300, min_content_height=100, css_classes=["card"]))
+        self.popover_add_note = Gtk.Button(label=_("Add Note"), css_classes=["flat"])
+        self.popover_add_note.connect("clicked", self._on_popover_add_note)
+        box.append(self.popover_add_note)
         popover = Gtk.Popover(child=box, position=Gtk.PositionType.TOP)
         popover.set_parent(self.overlay)
         popover.connect("closed", self._on_popover_closed)
@@ -275,11 +299,41 @@ class ReaderPage(Adw.NavigationPage):
 
     def _mark_data(self, entry) -> dict:
         hex_color = MARK_COLORS.get(entry.color, MARK_COLORS[DEFAULT_MARK_COLOR])
-        return {"cfi": entry.cfi, "hex": hex_color, "style": entry.style, "hasNote": bool(entry.text.strip())}
+        return {"cfi": entry.cfi, "hex": hex_color, "style": entry.style, "hasNote": entry.has_note}
 
     def _send_marks(self):
         if self.notes:
             self._js(f"endpaper.setMarks({json.dumps([self._mark_data(e) for e in self.notes.entries])})")
+
+    def _put_mark(self, entry):
+        self._js(f"endpaper.putMark({json.dumps(self._mark_data(entry))})")
+
+    def _go_to_mark(self, cfi):
+        self._js(f"endpaper.goToHref({json.dumps(cfi)})")
+        if self.notes_split.get_collapsed():
+            self.notes_split.set_show_sidebar(False)
+
+    def toggle_notes(self):
+        self.notes_button.set_active(not self.notes_button.get_active())
+
+    def _on_notes_shown(self, *_args):
+        if self.notes_split.get_show_sidebar():
+            if self.notes_panel.dirty:
+                self.notes_panel.rebuild()
+        else:
+            self.notes_panel.flush()
+            self.web.grab_focus()
+
+    def _notes_changed(self):
+        """Building the list takes a moment: it waits until the flyout is open."""
+        if self.notes_split.get_show_sidebar():
+            self.notes_panel.rebuild()
+        else:
+            self.notes_panel.dirty = True
+
+    def show_mark_notes(self, entry_id: str, new_note: bool = False):
+        self.notes_button.set_active(True)
+        self.notes_panel.show_entry(entry_id, new_note)
 
     def _on_mark_range(self, message):
         if not self.notes:
@@ -294,17 +348,20 @@ class ReaderPage(Adw.NavigationPage):
             self._save_failed()
         entry = next((e for e in self.notes.entries if e.cfi == message["cfi"]), None)
         if entry:
-            self._js(f"endpaper.putMark({json.dumps(self._mark_data(entry))})")
+            self._put_mark(entry)
+        self._notes_changed()
 
     def _on_mark_clicked(self, message):
         entry = next((e for e in self.notes.entries if e.cfi == message["cfi"]), None) if self.notes else None
         if entry is None or self.marking:
             return
+        if message.get("sign"):
+            self.show_mark_notes(entry.id)
+            return
         self._open_mark = None
         self._mark_guard = True
         self.popover_colors[entry.color if entry.color in MARK_COLORS else DEFAULT_MARK_COLOR].set_active(True)
         self.popover_underline.set_active(entry.style == "underline")
-        self.popover_note.get_buffer().set_text(entry.text)
         self._mark_guard = False
         self._open_mark = entry.id
         rect = Gdk.Rectangle()
@@ -322,6 +379,7 @@ class ReaderPage(Adw.NavigationPage):
         except KeyError:
             self._open_mark = None  # removed by another program meanwhile
         self._send_marks()
+        self._notes_changed()
 
     def _on_popover_color(self, button, name):
         if not self._mark_guard and button.get_active():
@@ -335,23 +393,26 @@ class ReaderPage(Adw.NavigationPage):
         mark, self._open_mark = self._open_mark, None
         entry = next((e for e in self.notes.entries if e.id == mark), None) if self.notes else None
         if entry:
+            self.notes_panel.flush()
             try:
                 self.notes.remove(mark)
             except NotesError:
                 self._save_failed()
             if not any(e.cfi == entry.cfi for e in self.notes.entries):
                 self._js(f"endpaper.dropMark({json.dumps(entry.cfi)})")
+            self._notes_changed()
         self.mark_popover.popdown()
 
+    def _on_popover_add_note(self, _button):
+        mark, self._open_mark = self._open_mark, None
+        self.mark_popover.popdown()
+        if mark:
+            self.show_mark_notes(mark, new_note=True)
+
     def _on_popover_closed(self, _popover):
-        if self._open_mark and self.notes:
-            buffer = self.popover_note.get_buffer()
-            text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
-            entry = next((e for e in self.notes.entries if e.id == self._open_mark), None)
-            if entry and entry.text != text:
-                self._change_open_mark(text=text)
         self._open_mark = None
-        self.web.grab_focus()
+        if not self.notes_split.get_show_sidebar():
+            self.web.grab_focus()
 
     def _open_notes(self, path: Path, title: str):
         self.notes = None
@@ -367,13 +428,16 @@ class ReaderPage(Adw.NavigationPage):
                 self.show_message(_("The notes file of this book is damaged. It stays as it is, new marks go to a file beside it."))
             self._notes_monitor = Gio.File.new_for_path(str(self.notes.path)).monitor_file(Gio.FileMonitorFlags.NONE, None)
             self._notes_monitor.connect("changed", self._on_notes_changed)
+        self.notes_panel.set_notes(self.notes)
 
     def _on_notes_changed(self, *_args):
         if not self.notes:
             return
         try:
+            self.notes_panel.flush()  # what was just typed goes first, merged with the change
             if self.notes.refresh():
                 self._send_marks()
+                self._notes_changed()
         except NotesError:
             pass  # the next change or look tries again; nothing is written over an unread file
 
@@ -384,9 +448,12 @@ class ReaderPage(Adw.NavigationPage):
             self._notes_monitor = None
         self._flush_notes()
         self.notes = None
+        self.notes_panel.set_notes(None)
+        self.notes_button.set_active(False)
 
     def _flush_notes(self):
         if self.notes:
+            self.notes_panel.flush()
             try:
                 self.notes.flush()
             except NotesError:
@@ -406,7 +473,12 @@ class ReaderPage(Adw.NavigationPage):
         """In a narrow window the text needs all the room."""
         self.prev_button.set_visible(not narrow)
         self.next_button.set_visible(not narrow)
-        self.split.set_collapsed(narrow)
+        for split in (self.split, self.notes_split):
+            # Without this a sidebar pops open whenever the window becomes wide again.
+            if narrow and not split.get_collapsed():
+                split.was_open = split.get_show_sidebar()
+            split.set_collapsed(narrow)
+            split.set_show_sidebar(False if narrow else getattr(split, "was_open", False))
 
     def _combo(self, title, choices, key):
         row = Adw.ComboRow(title=title, model=Gtk.StringList.new([label for _value, label in choices]))

@@ -12,12 +12,18 @@ and marks are saved to a conflict file beside it instead.
 
     > The quoted text
 
-    The note, as long as it likes.
+    <!-- endpaper-note id=n1 -->
+    A note in plain Markdown, as long as it likes.
+    <!-- endpaper-note-end -->
 
     <!-- endpaper: id=a1b2c3d4 cfi=epubcfi(/6/4!/4/2) color=yellow style=highlight -->
+
+Older files have the text of a single note directly between the quote and the anchor. They stay
+readable, and a mark takes the current form when the file is saved.
 """
 
 import copy
+import hashlib
 import re
 import secrets
 from dataclasses import dataclass, field, replace
@@ -31,9 +37,13 @@ from .library import conflict_path_for, notes_path_for
 ANCHOR = re.compile(r"^<!--\s*endpaper:\s*(.*?)\s*-->\s*$")
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 VALID_ID = re.compile(r"^[A-Za-z0-9_-]+$")
-# Lines of a note that would otherwise be read as part of the file's structure.
+NOTE_OPEN = re.compile(r"^<!--\s*endpaper-note\b(?!-)(.*?)-->\s*$")
+NOTE_END = re.compile(r"^<!--\s*endpaper-note-end\s*-->\s*$")
+# Inside a note only these lines need a backslash: all other Markdown stays as it is.
+IN_NOTE_NEEDS_ESCAPE = re.compile(r"^(\\*<!--\s*endpaper)")
+IN_NOTE_ESCAPED = re.compile(r"^\\(\\*<!--\s*endpaper)")
+# Older files: lines of a note that were written with a backslash.
 STRUCTURE = r"(?:#{1,6}\s|>|<!--\s*endpaper:)"
-NEEDS_ESCAPE = re.compile(rf"^(\\*{STRUCTURE})")
 ESCAPED = re.compile(rf"^\\(\\*{STRUCTURE})")
 CFI_SAFE = "/!:,()[]^~@;=."
 
@@ -43,16 +53,30 @@ class NotesError(Exception):
 
 
 @dataclass
+class Note:
+    id: str
+    text: str
+    conflict: bool = False  # a second version, written while the first changed elsewhere
+
+
+@dataclass
 class Entry:
     id: str
     cfi: str
     quote: str = ""
-    text: str = ""
+    notes: list[Note] = field(default_factory=list)
     chapter: str | None = None
     color: str = "yellow"
     style: str = "highlight"
     conflict: bool = False
     extra: dict[str, str] = field(default_factory=dict)  # settings of a newer version must survive
+
+    @property
+    def has_note(self) -> bool:
+        return any(note.text.strip() for note in self.notes)
+
+    def note(self, note_id: str) -> Note | None:
+        return next((note for note in self.notes if note.id == note_id), None)
 
 
 @dataclass
@@ -102,9 +126,65 @@ def _unescape(line: str) -> str:
     return ESCAPED.sub(r"\1", line)
 
 
+def _read_attributes(text: str) -> dict[str, str]:
+    return {key: value for key, _sep, value in (part.partition("=") for part in text.split()) if _sep}
+
+
+def _notes_from(lines: list[str], entry_id: str) -> list[Note]:
+    """Notes in their markers, and text outside of them, which is a note of an older file or written by hand."""
+    found, loose, current, attributes = [], [], None, {}
+
+    def flush_loose():
+        text = "\n".join(_unescape(line) for line in _trimmed(loose))
+        if text:
+            found.append(({}, text))
+        loose.clear()
+
+    for line in lines:
+        if current is None:
+            opening = NOTE_OPEN.match(line)
+            if opening:
+                flush_loose()
+                current, attributes = [], _read_attributes(opening[1])
+            else:
+                loose.append(line)
+        elif NOTE_END.match(line):
+            found.append((attributes, "\n".join(_trimmed(current))))
+            current = None
+        else:
+            current.append(IN_NOTE_ESCAPED.sub(r"\1", line))
+    if current is not None:  # the end marker went missing
+        found.append((attributes, "\n".join(_trimmed(current))))
+    flush_loose()
+
+    notes, taken = [], set()
+    for number, (note_attributes, text) in enumerate(found):
+        if not text.strip():
+            continue
+        note_id = note_attributes.get("id", "")
+        if not VALID_ID.match(note_id) or note_id in taken:
+            # Always the same for the same place, so that merging can recognize it.
+            note_id = hashlib.sha1(f"{entry_id}:{number}".encode()).hexdigest()[:8]
+        taken.add(note_id)
+        notes.append(Note(note_id, text, note_attributes.get("conflict") == "1"))
+    return notes
+
+
+def _quote_start(lines: list[str]) -> int | None:
+    in_note = False
+    for number, line in enumerate(lines):
+        if in_note:
+            in_note = not NOTE_END.match(line)
+        elif NOTE_OPEN.match(line):
+            in_note = True
+        elif line.startswith(">"):
+            return number
+    return None
+
+
 def _entry_from(lines: list[str], attributes: dict[str, str], chapter: str | None) -> tuple[list[str], Entry]:
     """Splits what stands before an anchor into text that stays loose and the mark itself."""
-    start = next((i for i, line in enumerate(lines) if line.startswith(">")), None)
+    start = _quote_start(lines)
     before, rest = ([], lines) if start is None else (lines[:start], lines[start:])
     quote = []
     while rest and rest[0].startswith(">"):
@@ -115,7 +195,7 @@ def _entry_from(lines: list[str], attributes: dict[str, str], chapter: str | Non
         id=attributes["id"],
         cfi=attributes["cfi"],
         quote="\n".join(quote),
-        text="\n".join(_unescape(line) for line in _trimmed(rest)),
+        notes=_notes_from(rest, attributes["id"]),
         chapter=chapter,
         color=attributes.get("color", "yellow"),
         style=attributes.get("style", "highlight"),
@@ -126,7 +206,7 @@ def _entry_from(lines: list[str], attributes: dict[str, str], chapter: str | Non
 
 def parse(text: str) -> list:
     """Any text is valid: what is not understood becomes Loose text."""
-    blocks, pending, seen, chapter = [], [], set(), None
+    blocks, pending, seen, chapter, in_note = [], [], set(), None, False
 
     def flush():
         lines = _trimmed(pending)
@@ -136,13 +216,19 @@ def parse(text: str) -> list:
 
     for line in text.removeprefix("﻿").splitlines():
         attributes = _read_anchor(line)
+        if in_note:  # a heading in a note is Markdown of the note. An anchor means its end marker went missing.
+            in_note = not (NOTE_END.match(line) or attributes)
+        elif NOTE_OPEN.match(line):
+            in_note = True
+            pending.append(line)
+            continue
         if attributes and attributes["id"] not in seen:
             seen.add(attributes["id"])
             before, entry = _entry_from(pending, attributes, chapter)
             pending[:] = before
             flush()
             blocks.append(entry)
-        elif not attributes and (heading := HEADING.match(line)):
+        elif not attributes and not in_note and not NOTE_END.match(line) and (heading := HEADING.match(line)):
             flush()
             level, title = len(heading[1]), heading[2]
             blocks.append(Heading(level, title))
@@ -158,8 +244,11 @@ def _write_entry(entry: Entry) -> str:
     parts = []
     if entry.quote:
         parts.append("\n".join(f"> {line}".rstrip() for line in entry.quote.splitlines()))
-    if entry.text.strip():
-        parts.append("\n".join(NEEDS_ESCAPE.sub(r"\\\1", line) for line in _trimmed(entry.text.splitlines())))
+    for note in entry.notes:
+        if note.text.strip():
+            opening = f"id={note.id}" + (" conflict=1" if note.conflict else "")
+            body = "\n".join(IN_NOTE_NEEDS_ESCAPE.sub(r"\\\1", line) for line in _trimmed(note.text.splitlines()))
+            parts.append(f"<!-- endpaper-note {opening} -->\n{body}\n<!-- endpaper-note-end -->")
     attributes = {"id": entry.id, "cfi": url_quote(entry.cfi, safe=CFI_SAFE), "color": entry.color, "style": entry.style}
     if entry.conflict:
         attributes["conflict"] = "1"
@@ -223,8 +312,42 @@ def _apply_update(blocks: list, base: Entry, changes: dict) -> None:
 
 def _apply_remove(blocks: list, base: Entry) -> None:
     current = _find(blocks, base.id)
-    if current is not None and (current.text, current.quote) == (base.text, base.quote):
+    if current is None:
+        return
+    same_notes = [n.text for n in current.notes] == [n.text for n in base.notes]
+    if current.quote == base.quote and same_notes:
         blocks.remove(current)  # what was changed elsewhere meanwhile stays
+
+
+def _apply_add_note(blocks: list, base: Entry, note: Note) -> None:
+    current = _find(blocks, base.id)
+    if current is None:  # removed elsewhere, written here: the note is worth keeping
+        _insert(blocks, replace(base, notes=[*base.notes, note]))
+    else:
+        if current.note(note.id):
+            note = replace(note, id=_new_id({n.id for n in current.notes}))
+        current.notes.append(note)
+
+
+def _apply_update_note(blocks: list, base: Entry, note_id: str, old_text: str, text: str) -> None:
+    current = _find(blocks, base.id)
+    if current is None:
+        current = replace(base, notes=[n for n in base.notes if n.id != note_id])
+        _insert(blocks, current)
+    note = current.note(note_id)
+    if note is None:
+        current.notes.append(Note(note_id, text))
+    elif note.text in (old_text, text):
+        note.text = text
+    else:  # both versions stay
+        current.notes.append(Note(_new_id({n.id for n in current.notes}), text, conflict=True))
+
+
+def _apply_remove_note(blocks: list, base: Entry, note_id: str, old_text: str) -> None:
+    current = _find(blocks, base.id)
+    note = current.note(note_id) if current else None
+    if note is not None and note.text == old_text:
+        current.notes.remove(note)  # what was changed elsewhere meanwhile stays
 
 
 class NotesFile:
@@ -255,12 +378,13 @@ class NotesFile:
     def add(self, cfi: str, quote: str = "", text: str = "", chapter: str | None = None,
             color: str = "yellow", style: str = "highlight") -> Entry:
         chapter = " ".join(chapter.split()) or None if chapter else None
-        entry = Entry(_new_id({e.id for e in self.entries}), cfi, quote, text, chapter, color, style)
+        notes = [Note(secrets.token_hex(4), text)] if text.strip() else []
+        entry = Entry(_new_id({e.id for e in self.entries}), cfi, quote, notes, chapter, color, style)
         self._change(_apply_add, copy.deepcopy(entry))
         return _find(self.blocks, entry.id) or entry
 
     def update(self, entry_id: str, **changes) -> None:
-        unknown = set(changes) - {"text", "color", "style"}
+        unknown = set(changes) - {"color", "style"}
         if unknown:
             raise ValueError(f"cannot change {unknown}")
         base = _find(self.blocks, entry_id)
@@ -273,6 +397,32 @@ class NotesFile:
         if base is None:
             raise KeyError(entry_id)
         self._change(_apply_remove, copy.deepcopy(base))
+
+    def _entry(self, entry_id: str) -> Entry:
+        base = _find(self.blocks, entry_id)
+        if base is None:
+            raise KeyError(entry_id)
+        return base
+
+    def add_note(self, entry_id: str, text: str) -> Note:
+        base = self._entry(entry_id)
+        note = Note(_new_id({n.id for n in base.notes}), text)
+        self._change(_apply_add_note, copy.deepcopy(base), copy.copy(note))
+        return note
+
+    def update_note(self, entry_id: str, note_id: str, text: str) -> None:
+        base = self._entry(entry_id)
+        note = base.note(note_id)
+        if note is None:
+            raise KeyError(note_id)
+        self._change(_apply_update_note, copy.deepcopy(base), note_id, note.text, text)
+
+    def remove_note(self, entry_id: str, note_id: str) -> None:
+        base = self._entry(entry_id)
+        note = base.note(note_id)
+        if note is None:
+            raise KeyError(note_id)
+        self._change(_apply_remove_note, copy.deepcopy(base), note_id, note.text)
 
     def refresh(self) -> bool:
         """Takes over what other programs changed. True if anything did."""

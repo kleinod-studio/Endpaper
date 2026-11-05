@@ -12,9 +12,13 @@ sys.path.insert(0, str(ROOT / "src"))
 from endpaper import library  # noqa: E402
 from endpaper import notes  # noqa: E402
 from endpaper.library import Book  # noqa: E402
-from endpaper.notes import Entry, NotesError, NotesFile, parse, serialize  # noqa: E402
+from endpaper.notes import Entry, Note, NotesError, NotesFile, parse, serialize  # noqa: E402
 
 CFI = "epubcfi(/6/4!/4/2,/1:0,/1:10)"
+
+
+def texts(entry):
+    return [note.text for note in entry.notes]
 
 
 class FormatTest(unittest.TestCase):
@@ -22,30 +26,47 @@ class FormatTest(unittest.TestCase):
         blocks = [
             notes.Heading(1, "A Book"),
             notes.Heading(2, "Chapter 1"),
-            Entry("a1", CFI, "A quote\nover two lines", "My note", "Chapter 1"),
+            Entry("a1", CFI, "A quote\nover two lines", [Note("n1", "My **note**"), Note("n2", "# Another\n\n- item")], "Chapter 1"),
         ]
         self.assertEqual(
             serialize(blocks),
-            "# A Book\n\n## Chapter 1\n\n> A quote\n> over two lines\n\nMy note\n\n"
+            "# A Book\n\n## Chapter 1\n\n> A quote\n> over two lines\n\n"
+            "<!-- endpaper-note id=n1 -->\nMy **note**\n<!-- endpaper-note-end -->\n\n"
+            "<!-- endpaper-note id=n2 -->\n# Another\n\n- item\n<!-- endpaper-note-end -->\n\n"
             f"<!-- endpaper: id=a1 cfi={CFI} color=yellow style=highlight -->\n",
         )
 
     def test_reading_gives_back_what_was_written(self):
-        entry = Entry("a1", CFI, "Quote", "First\n\nSecond paragraph", "Chapter 1", "green", "underline")
+        entry = Entry("a1", CFI, "Quote", [Note("n1", "First\n\nSecond paragraph"), Note("n2", "Other", True)], "Chapter 1", "green", "underline")
         blocks = parse(serialize([notes.Heading(2, "Chapter 1"), entry]))
         self.assertEqual(blocks[1], entry)
 
+    def test_markdown_in_a_note_stays_as_it_is(self):
+        for text in (
+            "# A heading",
+            "## Chapter 1",
+            "> a quote",
+            "**bold** and *italic*",
+            "- list\n- list",
+            "normal\n\n## a heading\n\n> a quote\nend",
+            "\\# with a backslash",
+            "```\ncode\n```",
+        ):
+            entry = Entry("a1", CFI, "Quote", [Note("n1", text)], None)
+            saved = serialize([entry])
+            self.assertIn(text, saved, "no escaping, also Typecase has to read it")
+            self.assertEqual(parse(saved), [entry], text)
+
     def test_notes_cannot_break_the_structure(self):
         for text in (
-            "# Not a heading",
-            "> not a quote",
             "<!-- endpaper: id=x cfi=y -->",
-            "\\# with a backslash",
-            "\\\\> two backslashes",
             "   <!-- endpaper: id=x cfi=y -->",
-            "normal\n\n## also not a heading\n\n> nor a quote\nend",
+            "<!-- endpaper-note-end -->",
+            "<!-- endpaper-note id=x -->",
+            "\\<!-- endpaper: id=x cfi=y -->",
+            "\\\\<!-- endpaper-note-end -->\nmore",
         ):
-            entry = Entry("a1", CFI, "Quote", text)
+            entry = Entry("a1", CFI, "Quote", [Note("n1", text)])
             self.assertEqual(parse(serialize([entry])), [entry], text)
 
     def test_odd_anchors_survive(self):
@@ -63,22 +84,78 @@ class FormatTest(unittest.TestCase):
         self.assertEqual(parse(text)[0].extra, {"future": "yes"})
 
     def test_windows_line_ends_and_bom(self):
-        text = f"﻿# Book\r\n\r\n> Quote\r\n\r\nNote\r\n\r\n<!-- endpaper: id=a1 cfi={CFI} -->\r\n"
+        text = f"\ufeff# Book\r\n\r\n> Quote\r\n\r\nNote\r\n\r\n<!-- endpaper: id=a1 cfi={CFI} -->\r\n"
         blocks = parse(text)
         self.assertEqual(blocks[0], notes.Heading(1, "Book"))
-        self.assertEqual((blocks[1].quote, blocks[1].text), ("Quote", "Note"))
+        self.assertEqual((blocks[1].quote, texts(blocks[1])), ("Quote", ["Note"]))
+
+
+class OlderFilesTest(unittest.TestCase):
+    OLD = f"> Quote\n\nMy note\n\n\\# escaped hash\n\n\\> escaped quote\n\n<!-- endpaper: id=a1 cfi={CFI} color=green style=highlight -->\n"
+
+    def test_a_note_in_the_old_form_is_read(self):
+        entry = parse(self.OLD)[0]
+        self.assertEqual(texts(entry), ["My note\n\n# escaped hash\n\n> escaped quote"])
+        self.assertEqual(entry.color, "green")
+
+    def test_its_id_stays_the_same_until_it_is_saved(self):
+        self.assertEqual(parse(self.OLD)[0].notes[0].id, parse(self.OLD)[0].notes[0].id)
+
+    def test_it_takes_the_new_form_when_saved(self):
+        saved = serialize(parse(self.OLD))
+        self.assertIn("<!-- endpaper-note id=", saved)
+        self.assertIn("# escaped hash", saved)
+        self.assertEqual(texts(parse(saved)[0]), texts(parse(self.OLD)[0]))
+        self.assertEqual(parse(saved)[0].notes[0].id, parse(self.OLD)[0].notes[0].id)
+
+    def test_changing_a_note_of_an_old_file_works(self):
+        with tempfile.TemporaryDirectory() as folder:
+            book = Path(folder) / "b.epub"
+            book.write_bytes(b"x")
+            (Path(folder) / "b.notes.md").write_text(self.OLD, encoding="utf-8")
+            file = NotesFile(book)
+            file.update_note("a1", file.entries[0].notes[0].id, "changed")
+            self.assertEqual(texts(NotesFile(book).entries[0]), ["changed"])
 
 
 class HandEditingTest(unittest.TestCase):
     def test_changed_text_is_taken_over(self):
         text = f"> Quote\n\nChanged by hand\n\n<!-- endpaper: id=a1 cfi={CFI} -->\n"
-        self.assertEqual(parse(text)[0].text, "Changed by hand")
+        self.assertEqual(texts(parse(text)[0]), ["Changed by hand"])
+
+    def test_changed_text_in_a_note_is_taken_over(self):
+        text = f"> Quote\n\n<!-- endpaper-note id=n1 -->\nBy **hand**\n<!-- endpaper-note-end -->\n\n<!-- endpaper: id=a1 cfi={CFI} -->\n"
+        self.assertEqual(parse(text)[0].notes, [Note("n1", "By **hand**")])
+
+    def test_text_written_beside_a_note_becomes_a_note(self):
+        text = f"> Quote\n\nFirst\n\n<!-- endpaper-note id=n1 -->\nSecond\n<!-- endpaper-note-end -->\n\nThird\n\n<!-- endpaper: id=a1 cfi={CFI} -->\n"
+        self.assertEqual(texts(parse(text)[0]), ["First", "Second", "Third"])
+
+    def test_a_missing_end_marker_loses_nothing(self):
+        text = f"> Quote\n\n<!-- endpaper-note id=n1 -->\nA note\n\n<!-- endpaper: id=a1 cfi={CFI} -->\n\n## Next\n\n<!-- endpaper: id=a2 cfi=c2 -->\n"
+        blocks = parse(text)
+        self.assertEqual(texts(blocks[0]), ["A note"])
+        self.assertEqual(blocks[1], notes.Heading(2, "Next"))
+        self.assertEqual(blocks[2].id, "a2")
+
+    def test_a_note_whose_mark_lost_its_anchor_stays_as_text(self):
+        text = "> Quote\n\n<!-- endpaper-note id=n1 -->\nImportant\n<!-- endpaper-note-end -->\n"
+        blocks = parse(text)
+        self.assertEqual(notes._entries(blocks), [])
+        self.assertIn("Important", serialize(blocks))
+        self.assertEqual(serialize(parse(serialize(blocks))), serialize(blocks))
+
+    def test_doubled_note_ids_keep_both_texts(self):
+        block = "<!-- endpaper-note id=n1 -->\n{}\n<!-- endpaper-note-end -->\n\n"
+        entry = parse(block.format("One") + block.format("Two") + f"<!-- endpaper: id=a1 cfi={CFI} -->\n")[0]
+        self.assertEqual(texts(entry), ["One", "Two"])
+        self.assertEqual(len({n.id for n in entry.notes}), 2)
 
     def test_a_blockquote_inside_a_note_stays_in_the_note(self):
         text = f"> Quote\n\nMine\n\n> Another\n\nEnd\n\n<!-- endpaper: id=a1 cfi={CFI} -->\n"
         entry = parse(text)[0]
         self.assertEqual(entry.quote, "Quote")
-        self.assertIn("> Another", entry.text)
+        self.assertIn("> Another", texts(entry)[0])
         self.assertEqual(parse(serialize([entry]))[0], entry)
 
     def test_text_outside_marks_stays(self):
@@ -108,7 +185,7 @@ class HandEditingTest(unittest.TestCase):
 
     def test_nothing_is_ever_lost_whatever_the_file_looks_like(self):
         anchors = ["<!-- endpaper: id=a{n} cfi=c -->", "<!-- endpaper: id=a1 cfi=c -->", "<!-- endpaper: oops -->", "<!-- other -->"]
-        shapes = ["word{n}", "> word{n}", ">word{n}", "# word{n}", "## word{n}", "\\# word{n}", "    word{n}", "- word{n}", "```word{n}", "", ""]
+        shapes = ["word{n}", "> word{n}", ">word{n}", "# word{n}", "## word{n}", "\\# word{n}", "    word{n}", "- word{n}", "```word{n}", "<!-- endpaper-note id=x -->", "<!-- endpaper-note-end -->", "", ""]
         random.seed(7)
         for _round in range(300):
             lines, words = [], []
@@ -160,13 +237,38 @@ class NotesFileTest(unittest.TestCase):
     def test_change_and_remove(self):
         file = self.open()
         entry = file.add(CFI, "Quote")
-        file.update(entry.id, text="Note", color="green")
-        self.assertEqual((self.open().entries[0].text, self.open().entries[0].color), ("Note", "green"))
+        file.update(entry.id, color="green")
+        note = file.add_note(entry.id, "Note")
+        self.assertEqual((texts(self.open().entries[0]), self.open().entries[0].color), (["Note"], "green"))
+        file.update_note(entry.id, note.id, "Changed")
+        self.assertEqual(texts(self.open().entries[0]), ["Changed"])
         file.remove(entry.id)
         self.assertEqual(self.open().entries, [])
         self.assertTrue(self.path.exists(), "the file is not deleted, it may hold text of the reader")
         with self.assertRaises(KeyError):
             file.remove("missing")
+
+    def test_a_mark_can_have_many_notes(self):
+        file = self.open()
+        entry = file.add(CFI, "Quote")
+        self.assertFalse(entry.has_note)
+        first = file.add_note(entry.id, "First **note**")
+        second = file.add_note(entry.id, "# Second\n\n- with a list")
+        third = file.add_note(entry.id, "Third")
+        self.assertEqual(texts(self.open().entries[0]), ["First **note**", "# Second\n\n- with a list", "Third"])
+        self.assertTrue(self.open().entries[0].has_note)
+        file.remove_note(entry.id, second.id)
+        self.assertEqual(texts(self.open().entries[0]), ["First **note**", "Third"])
+        self.assertEqual({first.id, third.id}, {n.id for n in self.open().entries[0].notes})
+        with self.assertRaises(KeyError):
+            file.remove_note(entry.id, "missing")
+
+    def test_a_note_has_no_limit(self):
+        file = self.open()
+        entry = file.add(CFI, "Quote")
+        long = "\n\n".join(f"Paragraph {n} " + "word " * 200 for n in range(500))
+        file.add_note(entry.id, long.strip())
+        self.assertEqual(texts(self.open().entries[0]), ["\n\n".join(f"Paragraph {n} " + "word " * 200 for n in range(500)).strip()])
 
     def test_a_failed_save_leaves_the_file_and_keeps_the_change(self):
         file = self.open()
@@ -177,9 +279,9 @@ class NotesFileTest(unittest.TestCase):
                 file.add("c2", text="not yet on disk")
         self.assertEqual(self.path.read_bytes(), before)
         self.assertEqual(sorted(p.name for p in self.folder.iterdir()), ["book.epub", "book.notes.md"], "no leftovers")
-        self.assertEqual([e.text for e in file.entries], ["safe", "not yet on disk"])
+        self.assertEqual([e.notes[0].text for e in file.entries], ["safe", "not yet on disk"])
         file.flush()
-        self.assertEqual([e.text for e in self.open().entries], ["safe", "not yet on disk"])
+        self.assertEqual([e.notes[0].text for e in self.open().entries], ["safe", "not yet on disk"])
 
     def test_a_crash_while_writing_leaves_the_old_file(self):
         file = self.open()
@@ -189,7 +291,7 @@ class NotesFileTest(unittest.TestCase):
             with self.assertRaises(KeyboardInterrupt):
                 file.add("c2", text="lost in the crash")
         self.assertEqual(self.path.read_bytes(), before)
-        self.assertEqual([e.text for e in self.open().entries], ["safe"])
+        self.assertEqual([e.notes[0].text for e in self.open().entries], ["safe"])
 
     def test_a_file_that_cannot_be_read_is_not_written_over(self):
         file = self.open()
@@ -200,9 +302,9 @@ class NotesFileTest(unittest.TestCase):
             with self.assertRaises(NotesError):
                 file.add("c2", text="waits")
         self.assertEqual(real_read(self.path), before)
-        self.assertEqual([e.text for e in file.entries], ["safe", "waits"], "still shown while it waits")
+        self.assertEqual([e.notes[0].text for e in file.entries], ["safe", "waits"], "still shown while it waits")
         file.flush()
-        self.assertEqual([e.text for e in self.open().entries], ["safe", "waits"])
+        self.assertEqual([e.notes[0].text for e in self.open().entries], ["safe", "waits"])
 
     def test_a_chapter_title_cannot_break_the_file(self):
         file = self.open()
@@ -227,7 +329,7 @@ class NotesFileTest(unittest.TestCase):
         self.outside(lambda text: text.replace("old", "new"))
         self.assertTrue(file.refresh())
         self.assertEqual(file.entries[0].id, entry.id)
-        self.assertEqual(file.entries[0].text, "new")
+        self.assertEqual(texts(file.entries[0]), ["new"])
 
     def test_marks_added_on_both_sides_stay(self):
         file = self.open()
@@ -235,7 +337,7 @@ class NotesFileTest(unittest.TestCase):
         other = self.open()
         other.add("c2", text="other computer")
         file.add("c3", text="this computer")
-        self.assertEqual([e.text for e in self.open().entries], ["base", "other computer", "this computer"])
+        self.assertEqual([e.notes[0].text for e in self.open().entries], ["base", "other computer", "this computer"])
 
     def test_different_changes_of_one_mark_are_merged(self):
         file = self.open()
@@ -243,48 +345,69 @@ class NotesFileTest(unittest.TestCase):
         self.outside(lambda text: text.replace("base", "changed outside"))
         file.update(entry.id, color="green")
         saved = self.open().entries
-        self.assertEqual([(e.text, e.color) for e in saved], [("changed outside", "green")])
+        self.assertEqual([(texts(e), e.color) for e in saved], [(["changed outside"], "green")])
 
-    def test_the_same_text_changed_on_both_sides_keeps_both(self):
+    def test_the_same_note_changed_on_both_sides_keeps_both(self):
         file = self.open()
         entry = file.add(CFI, "Quote", "base")
         self.outside(lambda text: text.replace("base", "outside"))
-        file.update(entry.id, text="here")
+        file.update_note(entry.id, entry.notes[0].id, "here")
         saved = self.open().entries
-        self.assertEqual(sorted(e.text for e in saved), ["here", "outside"])
-        self.assertEqual([e.text for e in saved if e.conflict], ["here"])
-        self.assertEqual(len({e.id for e in saved}), 2)
-        self.assertEqual({e.cfi for e in saved}, {CFI})
+        self.assertEqual(len(saved), 1)
+        self.assertEqual(texts(saved[0]), ["outside", "here"])
+        self.assertEqual([n.conflict for n in saved[0].notes], [False, True])
 
     def test_the_same_change_on_both_sides_is_no_conflict(self):
         file = self.open()
         entry = file.add(CFI, text="base")
         self.outside(lambda text: text.replace("base", "same"))
-        file.update(entry.id, text="same")
-        self.assertEqual([e.text for e in self.open().entries], ["same"])
+        file.update_note(entry.id, entry.notes[0].id, "same")
+        self.assertEqual(texts(self.open().entries[0]), ["same"])
+
+    def test_notes_added_on_both_sides_stay(self):
+        file = self.open()
+        entry = file.add(CFI, "Quote", "base")
+        other = self.open()
+        other.add_note(entry.id, "other computer")
+        file.add_note(entry.id, "this computer")
+        self.assertEqual(texts(self.open().entries[0]), ["base", "other computer", "this computer"])
+
+    def test_removing_a_note_that_changed_elsewhere_keeps_it(self):
+        file = self.open()
+        entry = file.add(CFI, "Quote", "base")
+        self.outside(lambda text: text.replace("base", "important addition"))
+        file.remove_note(entry.id, entry.notes[0].id)
+        self.assertEqual(texts(self.open().entries[0]), ["important addition"])
 
     def test_removing_what_was_changed_elsewhere_keeps_it(self):
         file = self.open()
         entry = file.add(CFI, text="base")
         self.outside(lambda text: text.replace("base", "important addition"))
         file.remove(entry.id)
-        self.assertEqual([e.text for e in self.open().entries], ["important addition"])
+        self.assertEqual(texts(self.open().entries[0]), ["important addition"])
 
-    def test_changing_what_was_removed_elsewhere_keeps_it(self):
+    def test_a_note_for_what_was_removed_elsewhere_keeps_it(self):
         file = self.open()
         keep = file.add("c1", text="other")
         entry = file.add("c2", "Quote", "base")
-        file_text = serialize([notes.Heading(1, "A Book"), keep])
-        self.path.write_text(file_text, encoding="utf-8")
-        file.update(entry.id, text="still wanted")
-        self.assertEqual([e.text for e in self.open().entries], ["other", "still wanted"])
+        self.path.write_text(serialize([notes.Heading(1, "A Book"), keep]), encoding="utf-8")
+        file.add_note(entry.id, "still wanted")
+        self.assertEqual([texts(e) for e in self.open().entries], [["other"], ["base", "still wanted"]])
+
+    def test_changing_a_note_of_what_was_removed_elsewhere_keeps_it(self):
+        file = self.open()
+        keep = file.add("c1", text="other")
+        entry = file.add("c2", "Quote", "base")
+        self.path.write_text(serialize([notes.Heading(1, "A Book"), keep]), encoding="utf-8")
+        file.update_note(entry.id, entry.notes[0].id, "still wanted")
+        self.assertEqual([texts(e) for e in self.open().entries], [["other"], ["still wanted"]])
 
     def test_the_file_deleted_outside_does_not_lose_the_next_change(self):
         file = self.open()
         entry = file.add(CFI, "Quote", "base")
         self.path.unlink()
-        file.update(entry.id, text="still wanted")
-        self.assertEqual([e.text for e in self.open().entries], ["still wanted"])
+        file.update_note(entry.id, entry.notes[0].id, "still wanted")
+        self.assertEqual(texts(self.open().entries[0]), ["still wanted"])
 
     def test_a_file_that_is_no_text_stays_untouched(self):
         garbage = b"# Mine\n\xff\xfe\x00 not utf-8"

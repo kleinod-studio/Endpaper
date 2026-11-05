@@ -146,9 +146,9 @@ export const createMarks = (view, post) => {
         return null
     }
 
-    const openMark = (cfi, doc, x, y) => {
+    const openMark = (cfi, doc, x, y, sign = false) => {
         const frame = doc.defaultView.frameElement?.getBoundingClientRect()
-        post('mark-clicked', { cfi, x: Math.round(x + (frame?.left ?? 0)), y: Math.round(y + (frame?.top ?? 0)) })
+        post('mark-clicked', { cfi, sign, x: Math.round(x + (frame?.left ?? 0)), y: Math.round(y + (frame?.top ?? 0)) })
     }
 
     view.addEventListener('draw-annotation', ({ detail: { draw: paint, annotation, doc, range } }) => {
@@ -191,7 +191,7 @@ export const createMarks = (view, post) => {
                     if (!sign) return
                     e.preventDefault()
                     e.stopPropagation()
-                    return openMark(sign, doc, e.clientX, e.clientY)
+                    return openMark(sign, doc, e.clientX, e.clientY, true)
                 }
                 e.preventDefault()
                 e.stopPropagation()

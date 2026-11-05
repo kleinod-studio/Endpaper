@@ -41,8 +41,12 @@ const span = (first, last) => {
 }
 
 const SVG = 'http://www.w3.org/2000/svg'
-const NOTE_SIZE = 12
-const NOTE_GAP = 6
+const NOTE_LINE_SHARE = 0.7 // the sign's size, as a share of the height of the line
+const NOTE_MIN_SIZE = 10
+const NOTE_MAX_SIZE = 18
+const NOTE_GAP = 12
+const NOTE_MIN_GAP = 4
+const NOTE_EDGE = 2 // in a narrow window the sign moves closer to the text, but stays on the page
 const NOTE_REACH = 3 // a little more room around it for the click
 
 const svgElement = (tag, attributes) => {
@@ -59,21 +63,20 @@ const notePlace = (range, first) => {
     while (block.parentElement && view.getComputedStyle(block).display === 'inline') block = block.parentElement
     const line = first.top + first.height / 2
     const box = [...block.getClientRects()].find(rect => line >= rect.top && line <= rect.bottom) ?? first
-    const y = first.top + (first.height - NOTE_SIZE) / 2
-    if (view.getComputedStyle(block).direction === 'rtl') return { x: box.right + NOTE_GAP, y }
-    return { x: box.left - NOTE_GAP - NOTE_SIZE, y }
+    const wanted = Math.min(NOTE_MAX_SIZE, Math.max(NOTE_MIN_SIZE, Math.round(first.height * NOTE_LINE_SHARE)))
+    if (view.getComputedStyle(block).direction === 'rtl') {
+        return { x: box.right + NOTE_GAP, y: first.top + (first.height - wanted) / 2, size: wanted }
+    }
+    // Where the margin is narrow, the sign keeps clear of the text first of all.
+    const room = box.left - NOTE_EDGE
+    const size = Math.max(NOTE_MIN_SIZE, Math.min(wanted, room - NOTE_MIN_GAP))
+    const y = first.top + (first.height - size) / 2
+    return { x: Math.max(NOTE_EDGE, box.left - Math.min(NOTE_GAP, Math.max(NOTE_MIN_GAP, room - size)) - size), y, size }
 }
 
-const noteSign = ({ x, y }, color) => {
-    const sign = svgElement('g', { class: 'endpaper-note', transform: `translate(${x} ${y})` })
-    const fold = NOTE_SIZE / 3
-    const end = NOTE_SIZE - fold
-    sign.append(
-        svgElement('path', { d: `M0 0H${NOTE_SIZE}V${end}L${end} ${NOTE_SIZE}H0Z`, fill: color, stroke: 'rgba(0, 0, 0, .35)', 'stroke-width': '.75' }),
-        svgElement('path', { d: `M${NOTE_SIZE} ${end}H${end}V${NOTE_SIZE}Z`, fill: 'rgba(0, 0, 0, .3)' }),
-    )
-    return sign
-}
+const noteSign = ({ x, y, size }, color) => svgElement('rect', {
+    class: 'endpaper-note', x, y, width: size, height: size, rx: 2, fill: color,
+})
 
 const quoteOf = range => range.toString().replace(/­/g, '').replace(/\s+/g, ' ').trim()
 
@@ -137,8 +140,8 @@ export const createMarks = (view, post) => {
     // The drawing lets clicks through, so that the text stays clickable: the sign is found by its place.
     const signAt = (doc, x, y) => {
         for (const [cfi, sign] of signs) {
-            if (sign.doc === doc && x >= sign.x - NOTE_REACH && x <= sign.x + NOTE_SIZE + NOTE_REACH
-                && y >= sign.y - NOTE_REACH && y <= sign.y + NOTE_SIZE + NOTE_REACH) return cfi
+            if (sign.doc === doc && x >= sign.x - NOTE_REACH && x <= sign.x + sign.size + NOTE_REACH
+                && y >= sign.y - NOTE_REACH && y <= sign.y + sign.size + NOTE_REACH) return cfi
         }
         return null
     }
@@ -221,7 +224,7 @@ export const createMarks = (view, post) => {
         get marking() { return marking },
         get pending() { return Boolean(pending) },
         get signs() {
-            return [...signs.values()].filter(({ doc }) => contentOf(doc)).map(({ x, y }) => ({ x, y, size: NOTE_SIZE }))
+            return [...signs.values()].filter(({ doc }) => contentOf(doc)).map(({ x, y, size }) => ({ x, y, size }))
         },
     }
 }

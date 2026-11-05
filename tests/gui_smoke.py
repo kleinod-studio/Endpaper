@@ -448,7 +448,16 @@ def scenario(app, window):
         const line = range.getClientRects()[0]
         return { left: line.left, top: line.top, bottom: line.bottom }
     })()""")
-    check(sign["x"] + sign["size"] <= word["left"], "beside the text, in the margin")
+    check(sign["x"] + sign["size"] + 10 <= word["left"], "beside the text, with some room")
+    check(sign["size"] >= 0.6 * (word["bottom"] - word["top"]) and sign["size"] <= word["bottom"] - word["top"], "as big as fits the line")
+    check(sign["y"] >= word["top"] and sign["y"] + sign["size"] <= word["bottom"], "and level with it")
+    reader.change_font_size(40)
+    check(wait_for(lambda: state()["signs"] and state()["signs"][0]["size"] > sign["size"]), "larger text gets a larger sign")
+    check(state()["signs"][0]["size"] <= 18, "but it stays small")
+    reader.change_font_size(None)
+    check(wait_for(lambda: state()["signs"] and state()["signs"][0]["size"] == sign["size"]), "and back")
+    spin(0.3)
+    sign = state()["signs"][0]
     click("p:nth-of-type(3)", "Sentence")  # the same paragraph, not the mark: no options
     spin(0.3)
     check(not reader.mark_popover.get_visible(), "clicks beside a mark do not open it")

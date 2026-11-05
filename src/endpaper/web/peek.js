@@ -3,7 +3,7 @@
 
 const EPUB = 'http://www.idpf.org/2007/ops'
 const NOTE_TYPES = new Set(['footnote', 'endnote', 'rearnote', 'note'])
-const HIDDEN = 'data-endpaper-note' // reader.js hides what carries this
+export const HIDDEN = 'data-endpaper-note' // reader.js hides what carries this
 const SHOW_DELAY = 250
 const HIDE_DELAY = 300
 const GAP = 8
@@ -42,7 +42,7 @@ const looksLikeNote = (a, target) =>
     && target.textContent.length <= MAX_NOTE_LENGTH
     && linksBack(target, a)
 
-const hideNotes = doc => {
+export const hideNotes = doc => {
     for (const aside of doc.querySelectorAll('aside'))
         if (types(aside).some(type => NOTE_TYPES.has(type))) aside.setAttribute(HIDDEN, '')
     for (const a of doc.querySelectorAll('a[href^="#"]')) {

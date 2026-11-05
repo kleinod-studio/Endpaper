@@ -104,6 +104,11 @@ def _install_css() -> None:
         .bookmark-list { background: none; }
         .bookmark-row { padding: 12px 8px 12px 14px; margin-bottom: 8px; }
         .bookmark-chapter { margin: 10px 0 8px; }
+        .search-list { background: none; }
+        .search-row { padding: 10px 12px; margin-bottom: 8px; }
+        .search-row:selected { background: alpha(var(--accent-bg-color), 0.22); }
+        .search-row label { line-height: 1.35; }
+        .search-chapter { margin: 14px 2px 8px; }
         .note-card { padding: 6px; }
         .note-card > button { font-weight: normal; padding: 6px; }
         .note-loose { padding: 10px; }
@@ -117,6 +122,19 @@ def _install_css() -> None:
         """
     )
     Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+
+def _whole_words(before: str, after: str) -> tuple[str, str]:
+    """The excerpt around a search result, cut off at whole words instead of in the middle of one."""
+    if before.startswith("…"):
+        _cut, space, rest = before[1:].partition(" ")
+        if space and rest:
+            before = "… " + rest
+    if after.endswith("…"):
+        rest, space, _cut = after[:-1].rpartition(" ")
+        if space and rest.strip():
+            after = rest + " …"
+    return before, after
 
 
 def _web_context() -> WebKit.WebContext:
@@ -205,7 +223,7 @@ class ReaderPage(Adw.NavigationPage):
         self.toc_list.connect("row-activated", self._on_toc_row)
         self.toc_list.update_property([Gtk.AccessibleProperty.LABEL], [_("Table of Contents")])
         self.toc_viewport = Gtk.Viewport(child=self.toc_list)
-        sidebar = Gtk.ScrolledWindow(child=self.toc_viewport, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        sidebar = self._build_search(Gtk.ScrolledWindow(child=self.toc_viewport, hscrollbar_policy=Gtk.PolicyType.NEVER))
 
         self.web = self._build_web_view()
         self.overlay = Gtk.Overlay(child=self.web)
@@ -218,7 +236,8 @@ class ReaderPage(Adw.NavigationPage):
 
         content = Adw.ToolbarView(content=self.overlay)
         content.add_top_bar(header)
-        self.split = Adw.OverlaySplitView(sidebar=self._sidebar_page(_("Table of Contents"), sidebar), content=content, show_sidebar=False)
+        self.sidebar_title = Adw.WindowTitle(title=_("Table of Contents"))
+        self.split = Adw.OverlaySplitView(sidebar=self._sidebar_page(self.sidebar_title, sidebar), content=content, show_sidebar=False)
         self.toc_button.bind_property(
             "active", self.split, "show-sidebar", GObject.BindingFlags.BIDIRECTIONAL
         )
@@ -1138,6 +1157,8 @@ class ReaderPage(Adw.NavigationPage):
             self._show_picture(message["data"], message.get("description", ""))
         elif kind == "picture-failed":
             self.show_message(_("This picture cannot be shown."))
+        elif kind.startswith("search-"):
+            self._on_search_message(kind, message)
         elif kind == "external-link":
             href = message["href"]
             if href.startswith(OPENABLE_LINKS):
@@ -1156,6 +1177,7 @@ class ReaderPage(Adw.NavigationPage):
         self.window_title.set_subtitle("")
         self.back_button.set_visible(False)
         self._clear_toc()
+        self.search_entry.set_text("")
         self._open_notes(path, title)
         self._apply_settings(save=False)
         self.web.load_uri(INDEX_URL)
@@ -1226,6 +1248,156 @@ class ReaderPage(Adw.NavigationPage):
         if self.split.get_collapsed():
             self.split.set_show_sidebar(False)
         self.web.grab_focus()
+
+    # --- Search in the book -------------------------------------------------------------------
+
+    MIN_QUERY = 2
+
+    def _build_search(self, toc: Gtk.Widget) -> Gtk.Widget:
+        """Above the table of contents; while there is something to find, the results take its place."""
+        self._search_run = 0
+        self._result_total = 0
+        self.search_entry = Gtk.SearchEntry(placeholder_text=_("Search in the Book"))
+        self.search_entry.update_property([Gtk.AccessibleProperty.LABEL], [_("Search in the Book")])
+        self.search_entry.connect("search-changed", self._on_search_changed)
+        self.search_entry.connect("activate", lambda _e: self._step_result(1))
+        self.search_entry.connect("next-match", lambda _e: self._step_result(1))
+        self.search_entry.connect("previous-match", lambda _e: self._step_result(-1))
+        self.search_entry.connect("stop-search", lambda _e: self._end_search())
+        keys = Gtk.EventControllerKey()
+        keys.connect("key-pressed", self._on_search_key)
+        self.search_entry.add_controller(keys)
+        self.search_status = Gtk.Label(xalign=0, css_classes=["dim-label", "caption"], visible=False)
+
+        self.result_list = Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.SINGLE, css_classes=["search-list"],
+            margin_start=12, margin_end=12, margin_bottom=12,
+        )
+        self.result_list.set_header_func(self._result_header)
+        self.result_list.connect("row-activated", self._on_result_row)
+        self.result_list.update_property([Gtk.AccessibleProperty.LABEL], [_("Search Results")])
+        nothing = Adw.StatusPage(
+            icon_name="system-search-symbolic", title=_("Nothing Found"),
+            description=_("Try another or a shorter word."),
+        )
+        nothing.add_css_class("compact")
+        self.sidebar_pages = Gtk.Stack()
+        self.sidebar_pages.add_named(toc, "toc")
+        self.result_scroll = Gtk.ScrolledWindow(child=self.result_list, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        self.sidebar_pages.add_named(self.result_scroll, "results")
+        self.sidebar_pages.add_named(nothing, "nothing")
+
+        top = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_start=12, margin_end=12, margin_bottom=6)
+        top.append(self.search_entry)
+        top.append(self.search_status)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.append(top)
+        box.append(self.sidebar_pages)
+        self.sidebar_pages.set_vexpand(True)
+        return box
+
+    def start_search(self):
+        """Ctrl+F: the search field in the sidebar, with what was searched before ready to be replaced."""
+        self.toc_button.set_active(True)
+        self.search_entry.grab_focus()
+        self.search_entry.select_region(0, -1)
+
+    def _on_search_changed(self, entry):
+        query = entry.get_text().strip()
+        self._search_run += 1
+        self._result_total = 0
+        self.result_list.remove_all()
+        if len(query) < self.MIN_QUERY:
+            self._js("endpaper.stopSearch()")
+            self.search_status.set_visible(False)
+            self.sidebar_pages.set_visible_child_name("toc")
+            self.sidebar_title.set_title(_("Table of Contents"))
+            return
+        self.sidebar_title.set_title(_("Search Results"))
+        self.sidebar_pages.set_visible_child_name("results")
+        self.search_status.set_label(_("Searching…"))
+        self.search_status.set_visible(True)
+        self._js(f"endpaper.search({json.dumps(query)}, {self._search_run})")
+
+    def _end_search(self):
+        if self.search_entry.get_text():
+            self.search_entry.set_text("")
+        else:
+            self.web.grab_focus()
+
+    def _on_search_key(self, _controller, keyval, _code, state):
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter) and state & Gdk.ModifierType.SHIFT_MASK:
+            self._step_result(-1)
+            return True
+        if keyval == Gdk.KEY_Down:
+            first = self.result_list.get_selected_row() or self.result_list.get_row_at_index(0)
+            if first:
+                first.grab_focus()
+                return True
+        return False
+
+    def _on_search_message(self, kind: str, message: dict):
+        if message.get("run") != self._search_run:
+            return  # a search that has been replaced
+        if kind == "search-results":
+            for item in message["items"]:
+                self.result_list.append(self._result_row(message["chapter"], item))
+            self._result_total += len(message["items"])
+            count = self._result_total
+            self.search_status.set_label(
+                ngettext("{count} found so far…", "{count} found so far…", count).format(count=count)
+            )
+        elif kind == "search-progress":
+            if not self._result_total:
+                percent = round(message["progress"] * 100)
+                self.search_status.set_label(_("Searching… {percent}%").format(percent=percent))
+        elif kind == "search-done":
+            count = message["count"]
+            self.search_status.set_label(ngettext("{count} result", "{count} results", count).format(count=count))
+            if not count:
+                self.search_status.set_visible(False)
+                self.sidebar_pages.set_visible_child_name("nothing")
+
+    def _result_row(self, chapter: str, item: dict) -> Gtk.ListBoxRow:
+        escape = GLib.markup_escape_text
+        before, after = _whole_words(item["pre"], item["post"])
+        label = Gtk.Label(
+            xalign=0, wrap=True, wrap_mode=2, lines=3, ellipsize=3, use_markup=True,
+            label=f"{escape(before)}<b>{escape(item['match'])}</b>{escape(after)}",
+        )
+        row = Gtk.ListBoxRow(child=label, css_classes=["card", "activatable", "search-row"])
+        row.update_property([Gtk.AccessibleProperty.LABEL], [f"{before}{item['match']}{after}"])
+        row.cfi = item["cfi"]
+        row.chapter = chapter
+        return row
+
+    @staticmethod
+    def _result_header(row, before):
+        if not row.chapter or (before and before.chapter == row.chapter):
+            row.set_header(None)
+        elif not row.get_header():
+            row.set_header(Gtk.Label(label=row.chapter, xalign=0, wrap=True, css_classes=["heading", "search-chapter"]))
+
+    def _on_result_row(self, _list, row):
+        self._js(f"endpaper.goToFound({json.dumps(row.cfi)})")
+        if self.split.get_collapsed():
+            self.split.set_show_sidebar(False)
+            self.web.grab_focus()
+
+    def _step_result(self, step: int):
+        """Enter and Shift+Enter in the search field go from one result to the next, as in other apps."""
+        selected = self.result_list.get_selected_row()
+        count = self._result_total
+        if not count:
+            return
+        index = (selected.get_index() + step) % count if selected else (0 if step > 0 else count - 1)
+        row = self.result_list.get_row_at_index(index)
+        self.result_list.select_row(row)
+        known, bounds = row.compute_bounds(self.result_list)
+        if known:
+            top = bounds.get_y()
+            self.result_scroll.get_vadjustment().clamp_page(top, top + bounds.get_height())
+        self._js(f"endpaper.goToFound({json.dumps(row.cfi)})")
 
     def toggle_toc(self):
         self.toc_button.set_active(not self.toc_button.get_active())

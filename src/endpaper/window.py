@@ -47,7 +47,7 @@ class EndpaperWindow(Adw.ApplicationWindow):
             ("show-shortcuts", self._show_shortcuts, False),
             ("new-category", lambda *_a: self.shelf.actions.activate_action("new-category", None), False),
             ("add-books", lambda *_a: self.shelf.actions.activate_action("add-books", None), False),
-            ("search", lambda *_a: self.shelf.start_search(), False),
+            ("search", lambda *_a: self.reader.start_search() if self.navigation.get_visible_page() is not self.shelf else self.shelf.start_search(), False),
             ("toggle-toc", lambda *_a: self.reader.toggle_toc(), True),
             ("toggle-notes", lambda *_a: self.reader.toggle_notes(), True),
             ("toggle-marking", lambda *_a: self.reader.toggle_marking(), True),
@@ -61,7 +61,7 @@ class EndpaperWindow(Adw.ApplicationWindow):
             self.add_action(action)
             if reader_only:
                 self.reader_actions.append(action)
-        self.shelf_actions = [self.lookup_action(n) for n in ("new-category", "add-books", "search")]
+        self.shelf_actions = [self.lookup_action(n) for n in ("new-category", "add-books")]
 
     def _update_actions(self):
         reading = self.navigation.get_visible_page() is not self.shelf
@@ -147,6 +147,8 @@ class EndpaperWindow(Adw.ApplicationWindow):
             (_("Previous Page"), "Left Page_Up <Shift>space"),
             (_("Back to Where You Were"), "BackSpace"),
             (_("Table of Contents"), "F9"),
+            (_("Search in the Book"), "<Primary>f"),
+            (_("Next or Previous Result"), "Return <Shift>Return"),
             (_("Notes"), "<Primary><Shift>n"),
             (_("Set or Remove a Bookmark"), "<Primary>d"),
             (_("Larger Text"), "<Primary>plus"),

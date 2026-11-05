@@ -40,7 +40,9 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 
 ## Phase 3: Search
 
-- [ ] Full-text search in a book, across the library and in your notes
+- [x] Full-text search in the open book, with the results by chapter beside the text (Ctrl+F)
+- [ ] Search in your notes
+- [ ] Full-text search across the library, indexed in the background
 
 ## Phase 4: Intelligent search, on your computer
 

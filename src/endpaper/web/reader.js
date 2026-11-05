@@ -7,6 +7,7 @@ import { createBookmarks } from './bookmarks.js'
 import { createPeek } from './peek.js'
 import { createFields } from './fields.js'
 import { createPictures } from './pictures.js'
+import { createSearch } from './search.js'
 
 const post = (type, data = {}) =>
     window.webkit.messageHandlers.endpaper.postMessage(JSON.stringify({ type, ...data }))
@@ -47,6 +48,7 @@ let peek = null
 let fields = null
 let bookmarks = null
 let pictures = null
+let search = null
 let settings = null
 const blocked = []
 
@@ -187,6 +189,7 @@ window.endpaper = {
             fields = createFields(view, post)
             bookmarks = createBookmarks(view, post)
             pictures = createPictures(view, post, { isBusy: () => marks.marking || bookmarks.placing })
+            search = createSearch(view, post)
             peek = createPeek(view, {
                 theme: () => THEMES[settings.theme],
                 isMarking: () => marks.marking,
@@ -230,6 +233,9 @@ window.endpaper = {
         applyLayout()
     },
     goToHref: href => view?.goTo(href),
+    search(query, run) { search?.start(query, run) },
+    stopSearch() { search?.stop() },
+    goToFound(cfi) { search?.goTo(cfi) },
     next: () => view?.next(),
     prev: () => view?.prev(),
     back: () => view?.history.back(),

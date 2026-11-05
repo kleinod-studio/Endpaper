@@ -731,6 +731,7 @@ class ReaderPage(Adw.NavigationPage):
         resolved = dict(self.settings)
         if resolved["theme"] == "auto":
             resolved["theme"] = "dark" if Adw.StyleManager.get_default().get_dark() else "light"
+        resolved["labels"] = {"goTo": _("Go to This Place")}
         return resolved
 
     def _apply_settings(self, save=True):

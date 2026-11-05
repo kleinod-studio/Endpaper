@@ -34,7 +34,7 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 - [x] Notes saved as readable `.notes.md` files beside the book
 - [x] Undo and redo for changes to marks
 - [ ] Open in Typecase
-- [ ] Previews of footnotes and references, without leaving the page
+- [x] Previews of footnotes and references in a small popup
 
 ## Phase 3: Search
 

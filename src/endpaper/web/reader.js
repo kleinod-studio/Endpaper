@@ -3,25 +3,30 @@
 import './foliate-js/view.js'
 import { adapt, audit } from './contrast.js'
 import { createMarks } from './marks.js'
+import { createPeek } from './peek.js'
 
 const post = (type, data = {}) =>
     window.webkit.messageHandlers.endpaper.postMessage(JSON.stringify({ type, ...data }))
 
 const THEMES = {
-    light: { bg: '#ffffff', fg: '#2e2e32', scheme: 'light', adapt: false },
+    light: { bg: '#ffffff', fg: '#2e2e32', peek: 'rgba(247, 247, 250, .86)', scheme: 'light', adapt: false },
     sepia: {
+        peek: 'rgba(253, 248, 236, .86)',
         bg: '#f5eedc', fg: '#40342a', scheme: 'light', adapt: true, dark: false,
         bgRgb: 'rgb(245, 238, 220)', fgRgb: 'rgb(64, 52, 42)', surfaceRgb: 'rgb(233, 224, 200)',
     },
     sage: {
+        peek: 'rgba(244, 249, 241, .86)',
         bg: '#e4ecdf', fg: '#2c3a2e', scheme: 'light', adapt: true, dark: false,
         bgRgb: 'rgb(228, 236, 223)', fgRgb: 'rgb(44, 58, 46)', surfaceRgb: 'rgb(212, 224, 205)',
     },
     dark: {
+        peek: 'rgba(58, 58, 66, .86)',
         bg: '#222226', fg: '#e3e3e6', scheme: 'dark', adapt: true, dark: true,
         bgRgb: 'rgb(34, 34, 38)', fgRgb: 'rgb(227, 227, 230)', surfaceRgb: 'rgb(50, 50, 56)',
     },
     black: {
+        peek: 'rgba(40, 40, 44, .86)',
         bg: '#000000', fg: '#d6d6d6', scheme: 'dark', adapt: true, dark: true,
         bgRgb: 'rgb(0, 0, 0)', fgRgb: 'rgb(214, 214, 214)', surfaceRgb: 'rgb(32, 32, 32)',
     },
@@ -35,6 +40,7 @@ const FONT = { serif: 'serif', 'sans-serif': 'sans-serif' }
 
 let view = null
 let marks = null
+let peek = null
 let settings = null
 const blocked = []
 
@@ -60,6 +66,8 @@ const css = () => {
     img, svg { max-width: 100%; }
     /* Pictures are kept whole by foliate-js, but not when they sit in a figure that may break across pages. */
     figure { break-inside: avoid !important; }
+    /* Footnotes are shown in the popup at their mark, not in the running text. */
+    [data-endpaper-note] { display: none !important; }
     /* Answer fields in study editions: what is typed there would be lost when the book closes. */
     textarea, input, select, button { display: none !important; }
     `
@@ -124,7 +132,7 @@ document.addEventListener('keydown', onKeydown)
 let wheelSum = 0
 let wheelLockedUntil = 0
 const onWheel = e => {
-    if (settings.flow !== 'paginated' || e.ctrlKey) return
+    if (settings.flow !== 'paginated' || e.ctrlKey || e.target.closest?.('.endpaper-peek')) return
     e.preventDefault()
     const now = performance.now()
     if (now < wheelLockedUntil) return
@@ -152,6 +160,11 @@ window.endpaper = {
             const blob = await (await fetch(url)).blob()
             view = document.createElement('foliate-view')
             marks = createMarks(view, post)
+            peek = createPeek(view, {
+                theme: () => THEMES[settings.theme],
+                isMarking: () => marks.marking,
+                label: () => settings.labels.goTo,
+            })
             view.addEventListener('relocate', ({ detail }) => post('relocate', {
                 cfi: detail.cfi ?? null,
                 fraction: Number.isFinite(detail.fraction) ? detail.fraction : 0,
@@ -159,11 +172,12 @@ window.endpaper = {
                 tocHref: detail.tocItem?.href ?? '',
                 canGoBack: view.history.canGoBack,
             }))
-            view.addEventListener('load', ({ detail: { doc } }) => {
+            view.addEventListener('load', ({ detail: { doc, index } }) => {
                 doc.addEventListener('securitypolicyviolation', onViolation)
                 doc.addEventListener('keydown', onKeydown)
                 doc.addEventListener('wheel', onWheel, { passive: false })
                 marks.attach(doc)
+                peek.attach(doc, index)
                 adaptColors(doc)
             })
             view.addEventListener('external-link', e => {
@@ -226,7 +240,10 @@ window.endpaper = {
             text: view.lastLocation?.range?.toString() ?? '',
         }
     },
-    setMarking: (on, hex) => marks?.setMarking(on, hex),
+    setMarking: (on, hex) => {
+        peek?.hide()
+        marks?.setMarking(on, hex)
+    },
     cancelPendingMark: () => marks?.cancelPending(),
     markKey: name => { marks?.key(name) },
     setMarks: list => marks?.setAll(list),
@@ -284,6 +301,28 @@ window.endpaper = {
     },
     goToIndex: index => view.goTo(index),
     sections: () => view.book.sections.map(s => ({ linear: s.linear, size: s.size })),
+    peekState: () => peek?.state,
+    peekHide: () => peek?.hide(),
+    peekGo: () => peek?.clickGo(),
+    // Links by their text; a real pointer on the screen does the same.
+    linkEvent(text, type) {
+        const doc = view.renderer.getContents()[0].doc
+        const a = [...doc.querySelectorAll('a[href]')].find(link => link.textContent.trim() === text)
+        if (!a) return false
+        if (type === 'rect') {
+            const frame = doc.defaultView.frameElement.getBoundingClientRect()
+            const { left, right, top, bottom } = a.getClientRects()[0]
+            return { left: left + frame.left, right: right + frame.left, top: top + frame.top, bottom: bottom + frame.top }
+        }
+        if (type === 'focusin') a.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+        else if (type === 'click') a.click()
+        else a.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: doc.defaultView }))
+        return true
+    },
+    isShown: id => {
+        const element = view.renderer.getContents()[0].doc.getElementById(id)
+        return element ? element.getClientRects().length > 0 : null
+    },
     clickLink(index) {
         const doc = view.renderer.getContents()[0].doc
         doc.querySelectorAll('a[href]')[index]?.click()

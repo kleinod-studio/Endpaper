@@ -6,6 +6,53 @@
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; }
   foliate-view { display: block; width: 100%; height: 100%; }
+  /* Frosted glass: the page shines through softly, and it floats on a soft, layered shadow. */
+  .endpaper-peek {
+    position: fixed;
+    z-index: 10;
+    box-sizing: border-box;
+    width: max-content;
+    max-width: min(26rem, calc(100vw - 16px));
+    border-radius: 14px;
+    background: var(--surface);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+    backdrop-filter: blur(18px) saturate(1.3);
+    box-shadow:
+      0 0 0 1px rgba(128, 128, 128, .22),
+      0 1px 2px rgba(0, 0, 0, .10),
+      0 8px 20px rgba(0, 0, 0, .16),
+      0 22px 54px rgba(0, 0, 0, .20);
+    font-family: sans-serif;
+    line-height: 1.45;
+    overflow: hidden;
+    animation: endpaper-peek-in .14s ease-out;
+  }
+  .endpaper-peek[data-side="right"] { transform-origin: left center; }
+  .endpaper-peek[data-side="left"] { transform-origin: right center; }
+  @keyframes endpaper-peek-in {
+    from { opacity: 0; transform: scale(.97); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .endpaper-peek { animation: none; }
+  }
+  .endpaper-peek[hidden], .endpaper-peek button[hidden] { display: none; }
+  .endpaper-peek .body { max-height: min(72vh, 36rem); overflow-y: auto; padding: .8em 1em; overflow-wrap: anywhere; }
+  .endpaper-peek p { margin: 0 0 .5em; }
+  .endpaper-peek p:last-child { margin-bottom: 0; }
+  .endpaper-peek p.heading { font-weight: bold; }
+  .endpaper-peek button {
+    display: block;
+    width: 100%;
+    padding: .5em 1em;
+    border: 0;
+    border-top: 1px solid rgba(128, 128, 128, .3);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+  .endpaper-peek button:hover, .endpaper-peek button:focus-visible { background: rgba(128, 128, 128, .15); }
 </style>
 <script type="module" src="endpaper://app/reader.js"></script>
 </head>

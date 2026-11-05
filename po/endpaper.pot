@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: endpaper\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-05 14:04+0100\n"
+"POT-Creation-Date: 2026-11-05 14:27+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -133,7 +133,7 @@ msgstr ""
 msgid "Add Note"
 msgstr ""
 
-#: src/endpaper/reader_view.py:317 src/endpaper/reader_view.py:871
+#: src/endpaper/reader_view.py:317 src/endpaper/reader_view.py:872
 msgid "Click the first word, then the last. Double-click marks one word."
 msgstr ""
 
@@ -275,31 +275,35 @@ msgstr ""
 msgid "Light or dark, as the system is set"
 msgstr ""
 
-#: src/endpaper/reader_view.py:778
+#: src/endpaper/reader_view.py:734 src/endpaper/notes_panel.py:173
+msgid "Go to This Place"
+msgstr ""
+
+#: src/endpaper/reader_view.py:779
 msgid "Book Text"
 msgstr ""
 
-#: src/endpaper/reader_view.py:833
+#: src/endpaper/reader_view.py:834
 msgid "The book could not be shown any further."
 msgstr ""
 
-#: src/endpaper/reader_view.py:870
+#: src/endpaper/reader_view.py:871
 msgid "Now click the last word. A second click on this word marks only it."
 msgstr ""
 
-#: src/endpaper/reader_view.py:874
+#: src/endpaper/reader_view.py:875
 msgid "A mark cannot go across chapters. This word is the new start."
 msgstr ""
 
-#: src/endpaper/reader_view.py:876
+#: src/endpaper/reader_view.py:877
 msgid "There is no mark at this word."
 msgstr ""
 
-#: src/endpaper/reader_view.py:886 src/endpaper/shelf.py:600
+#: src/endpaper/reader_view.py:887 src/endpaper/shelf.py:600
 msgid "This file could not be opened as a book."
 msgstr ""
 
-#: src/endpaper/reader_view.py:933 src/endpaper/shelf.py:136
+#: src/endpaper/reader_view.py:934 src/endpaper/shelf.py:136
 #, python-brace-format
 msgid "{percent}%"
 msgstr ""
@@ -650,10 +654,6 @@ msgstr ""
 
 #: src/endpaper/notes_panel.py:170
 msgid "Mark without text"
-msgstr ""
-
-#: src/endpaper/notes_panel.py:173
-msgid "Go to This Place"
 msgstr ""
 
 #: src/endpaper/notes_panel.py:195

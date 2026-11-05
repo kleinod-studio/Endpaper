@@ -117,6 +117,69 @@ def make_figures_epub(path: Path):
     return path
 
 
+def make_notes_epub(path: Path):
+    """Footnotes and references of the kinds books use, in text made up for this test."""
+    filler = "".join(f"<p>Filler paragraph {n} with some words that fill the page for a while.</p>" for n in range(4))
+    one = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en"><head><title>One</title></head><body>'
+        '<h1>One</h1>'
+        '<p id="para">Main text<span id="src1"></span><a epub:type="noteref" href="#note1">note-mark</a> and '
+        '<span id="src2"></span><a href="#plain2">[2]</a> and '
+        '<a epub:type="noteref" href="#bad">bad-mark</a> and '
+        '<a href="#target-para">same-chapter</a> and <a href="two.xhtml#verse2">verse-link</a> and '
+        '<a href="two.xhtml#long-para">long-link</a> and <a href="two.xhtml#head">heading-link</a> and '
+        '<a href="two.xhtml">chapter-link</a> and <a epub:type="noteref" href="#missing">nothing-mark</a> and '
+        '<a href="https://example.org/x">web-link</a>.</p>'
+        f'{filler}<p id="target-para">A paragraph of its own, <em>worth</em> looking at.</p>'
+        '<aside epub:type="footnote" id="aside1"><div epub:type="footnote" id="note1"><p><a href="#src1">*</a> '
+        'The <strong>text</strong> of the first footnote.</p></div></aside>'
+        '<p id="plain2"><a href="#src2">[2]</a> A plain footnote without any markup for it.</p>'
+        '<aside epub:type="footnote"><div id="bad"><p>Harmless words'
+        '<img src="x" onerror="window.__pwned=1"/><script>window.__pwned=2</script>'
+        '<a href="javascript:window.__pwned=3">more words</a></p></div></aside>'
+        '</body></html>'
+    )
+    two = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en"><head><title>Two</title></head><body>'
+        '<h1 id="head">Two</h1><p>The paragraph after the heading.</p>'
+        '<p><span id="verse1"></span><strong><sup>1</sup></strong> First verse. '
+        '<span id="verse2"></span><strong><sup>2</sup></strong> Second verse'
+        '<span id="src9"></span><a epub:type="noteref" href="#note9">*</a> goes on. '
+        '<span id="verse3"></span><strong><sup>3</sup></strong> Third verse.</p>'
+        f'<aside epub:type="footnote"><div id="note9"><p>Another note.</p></div></aside>'
+        f'<p id="long-para">{"A very long paragraph. " * 200}</p>'
+        '</body></html>'
+    )
+    items, spine = [], []
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+        z.writestr(
+            "META-INF/container.xml",
+            '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+            '<rootfiles><rootfile full-path="OEBPS/p.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
+        )
+        for name, text in (("one", one), ("two", two)):
+            z.writestr(f"OEBPS/{name}.xhtml", text)
+            items.append(f'<item id="{name}" href="{name}.xhtml" media-type="application/xhtml+xml"/>')
+            spine.append(f'<itemref idref="{name}"/>')
+        z.writestr(
+            "OEBPS/nav.xhtml",
+            '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'
+            '<body><nav epub:type="toc"><ol><li><a href="one.xhtml">One</a></li><li><a href="two.xhtml">Two</a></li></ol></nav></body></html>',
+        )
+        items.append('<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>')
+        z.writestr(
+            "OEBPS/p.opf",
+            '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="i">'
+            '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="i">urn:notes</dc:identifier>'
+            '<dc:title>Notes Book</dc:title><dc:language>en</dc:language></metadata>'
+            f'<manifest>{"".join(items)}</manifest><spine>{"".join(spine)}</spine></package>',
+        )
+    return path
+
+
 def make_hostile_epub(path: Path, base: str):
     """A book that tries everything to run code and to reach the outside. base: a local server that records requests."""
     leak = (

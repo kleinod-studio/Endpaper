@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: endpaper\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-05 14:04+0100\n"
+"POT-Creation-Date: 2026-11-05 14:27+0100\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -126,7 +126,7 @@ msgstr "Markierung entfernen"
 msgid "Add Note"
 msgstr "Anmerkung hinzufügen"
 
-#: src/endpaper/reader_view.py:317 src/endpaper/reader_view.py:871
+#: src/endpaper/reader_view.py:317 src/endpaper/reader_view.py:872
 msgid "Click the first word, then the last. Double-click marks one word."
 msgstr ""
 "Klicke das erste Wort an, dann das letzte. Ein Doppelklick markiert ein Wort."
@@ -279,35 +279,39 @@ msgstr "Dem System folgen"
 msgid "Light or dark, as the system is set"
 msgstr "Hell oder dunkel, wie im System eingestellt"
 
-#: src/endpaper/reader_view.py:778
+#: src/endpaper/reader_view.py:734 src/endpaper/notes_panel.py:173
+msgid "Go to This Place"
+msgstr "Zu dieser Stelle gehen"
+
+#: src/endpaper/reader_view.py:779
 msgid "Book Text"
 msgstr "Buchtext"
 
-#: src/endpaper/reader_view.py:833
+#: src/endpaper/reader_view.py:834
 msgid "The book could not be shown any further."
 msgstr "Das Buch konnte nicht weiter angezeigt werden."
 
-#: src/endpaper/reader_view.py:870
+#: src/endpaper/reader_view.py:871
 msgid "Now click the last word. A second click on this word marks only it."
 msgstr ""
 "Klicke jetzt das letzte Wort an. Ein zweiter Klick auf dieses Wort markiert "
 "nur dieses."
 
-#: src/endpaper/reader_view.py:874
+#: src/endpaper/reader_view.py:875
 msgid "A mark cannot go across chapters. This word is the new start."
 msgstr ""
 "Eine Markierung kann nicht über Kapitel hinweg gehen. Dieses Wort ist der "
 "neue Anfang."
 
-#: src/endpaper/reader_view.py:876
+#: src/endpaper/reader_view.py:877
 msgid "There is no mark at this word."
 msgstr "An diesem Wort ist keine Markierung."
 
-#: src/endpaper/reader_view.py:886 src/endpaper/shelf.py:600
+#: src/endpaper/reader_view.py:887 src/endpaper/shelf.py:600
 msgid "This file could not be opened as a book."
 msgstr "Diese Datei ließ sich nicht als Buch öffnen."
 
-#: src/endpaper/reader_view.py:933 src/endpaper/shelf.py:136
+#: src/endpaper/reader_view.py:934 src/endpaper/shelf.py:136
 #, python-brace-format
 msgid "{percent}%"
 msgstr "{percent} %"
@@ -671,10 +675,6 @@ msgstr "Klicke im Text auf eine Markierung, um eine Anmerkung hinzuzufügen."
 #: src/endpaper/notes_panel.py:170
 msgid "Mark without text"
 msgstr "Markierung ohne Text"
-
-#: src/endpaper/notes_panel.py:173
-msgid "Go to This Place"
-msgstr "Zu dieser Stelle gehen"
 
 #: src/endpaper/notes_panel.py:195
 msgid "Not Assigned to a Mark"

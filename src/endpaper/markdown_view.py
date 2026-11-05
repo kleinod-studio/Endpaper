@@ -7,7 +7,8 @@ from .markdown_style import FENCE, line_spans
 
 class MarkdownView(Gtk.TextView):
     def __init__(self, text: str = ""):
-        super().__init__(wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=4, bottom_margin=4, css_classes=["note-view"])
+        # accepts_tab: the Tab key goes on to the next control, so that everything stays reachable by keyboard.
+        super().__init__(wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=4, bottom_margin=4, accepts_tab=False, css_classes=["note-view"])
         self.tags = {}
         self._last_width = 0
         buffer = self.get_buffer()

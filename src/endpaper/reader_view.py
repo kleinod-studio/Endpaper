@@ -35,6 +35,11 @@ CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript"}
 THEME_BACKGROUNDS = {"light": "#ffffff", "sepia": "#f5eedc", "dark": "#222226"}
 MARK_COLORS = {"yellow": "#f5c211", "green": "#33d17a", "blue": "#62a0ea", "pink": "#f08cc0"}
 DEFAULT_MARK_COLOR = "yellow"
+MARK_KEYS = {
+    Gdk.KEY_Left: "left", Gdk.KEY_Right: "right", Gdk.KEY_Up: "up", Gdk.KEY_Down: "down",
+    Gdk.KEY_Return: "choose", Gdk.KEY_KP_Enter: "choose", Gdk.KEY_space: "choose",
+    Gdk.KEY_Page_Down: "page-next", Gdk.KEY_Page_Up: "page-previous", Gdk.KEY_Menu: "menu",
+}
 
 
 def _mark_color_name(color: str) -> str:
@@ -281,9 +286,37 @@ class ReaderPage(Adw.NavigationPage):
         else:
             self.start_marking()
 
-    def _on_key(self, _controller, keyval, _code, _state):
-        if keyval == Gdk.KEY_Escape and self.marking:
-            self.on_escape()
+    def _on_key(self, _controller, keyval, _code, state):
+        if self.mark_popover.get_visible():
+            return False  # the menu has its own keys
+        focus = self.get_root().get_focus() if self.get_root() else None
+        in_notes = focus is not None and focus.is_ancestor(self.notes_panel)
+        if keyval == Gdk.KEY_Escape:
+            if self.marking and not in_notes:
+                self.on_escape()
+                return True
+            if in_notes:
+                self.notes_panel.flush()
+                self.notes_button.set_active(False)
+                return True
+            return False
+        if not self.marking or (focus is not None and focus is not self.web):
+            return False
+        if keyval == Gdk.KEY_F10 and state & Gdk.ModifierType.SHIFT_MASK:
+            self._js('endpaper.markKey("menu")')
+            return True
+        if state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SHIFT_MASK):
+            return False
+        name = MARK_KEYS.get(keyval)
+        if name:
+            self._js(f"endpaper.markKey({json.dumps(name)})")
+            return True
+        if keyval == Gdk.KEY_u:
+            self.underline_button.set_active(not self.underline_button.get_active())
+            return True
+        number = keyval - Gdk.KEY_1
+        if 0 <= number < len(MARK_COLORS):
+            self.mark_buttons[list(MARK_COLORS)[number]].set_active(True)
             return True
         return False
 
@@ -315,6 +348,8 @@ class ReaderPage(Adw.NavigationPage):
 
     def toggle_notes(self):
         self.notes_button.set_active(not self.notes_button.get_active())
+        if self.notes_button.get_active():
+            self.notes_panel.child_focus(Gtk.DirectionType.TAB_FORWARD)
 
     def _on_notes_shown(self, *_args):
         if self.notes_split.get_show_sidebar():
@@ -353,7 +388,7 @@ class ReaderPage(Adw.NavigationPage):
 
     def _on_mark_clicked(self, message):
         entry = next((e for e in self.notes.entries if e.cfi == message["cfi"]), None) if self.notes else None
-        if entry is None or self.marking:
+        if entry is None or (self.marking and not message.get("menu")):
             return
         if message.get("sign"):
             self.show_mark_notes(entry.id)
@@ -669,6 +704,8 @@ class ReaderPage(Adw.NavigationPage):
             )
         elif kind == "mark-other-chapter":
             self.show_message(_("A mark cannot go across chapters. This word is the new start."))
+        elif kind == "mark-none":
+            self.show_message(_("There is no mark at this word."))
         elif kind == "mark-range":
             self._on_mark_range(message)
         elif kind == "mark-clicked":

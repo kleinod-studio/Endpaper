@@ -220,6 +220,7 @@ window.endpaper = {
     },
     setMarking: (on, hex) => marks?.setMarking(on, hex),
     cancelPendingMark: () => marks?.cancelPending(),
+    markKey: name => { marks?.key(name) },
     setMarks: list => marks?.setAll(list),
     putMark: mark => marks?.put(mark),
     dropMark: cfi => marks?.drop(cfi),
@@ -249,6 +250,7 @@ window.endpaper = {
         marking: marks?.marking ?? false,
         pending: marks?.pending ?? false,
         signs: marks?.signs ?? [],
+        cursor: marks?.cursor ?? null,
         drawn: view.renderer.getContents()[0]?.overlayer?.element.childElementCount ?? 0,
     }),
     splitImages: () => {

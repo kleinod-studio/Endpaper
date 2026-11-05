@@ -3,6 +3,8 @@
 import { Overlayer } from './foliate-js/overlayer.js'
 
 const PENDING = 'endpaper-pending'
+const CURSOR = 'endpaper-cursor'
+const PREVIEW = 'endpaper-preview'
 const POINT_TOLERANCE = 2
 const CLOSING = /^[\p{Pe}\p{Pf}\p{Po}]+/u
 const OPENING = /[\p{Ps}\p{Pi}]+$/u
@@ -28,6 +30,100 @@ const wordAt = (doc, x, y) => {
     if (found < 0) return null
     for (let i = found; i >= 0; i--) if (segments[i].isWordLike) return rangeOf(segments[i])
     return null
+}
+
+// --- Going from word to word with the keyboard -------------------------------------------------
+
+const wordsIn = new WeakMap()
+
+const wordsOf = node => {
+    if (!wordsIn.has(node)) {
+        const segmenter = new Intl.Segmenter(node.ownerDocument.documentElement.lang || undefined, { granularity: 'word' })
+        wordsIn.set(node, [...segmenter.segment(node.data)].filter(s => s.isWordLike)
+            .map(({ index, segment }) => [index, index + segment.length]))
+    }
+    return wordsIn.get(node)
+}
+
+const shown = node => {
+    const parent = node.parentElement
+    if (!parent?.getClientRects().length) return false
+    const folded = parent.closest('details:not([open])')
+    return !folded || Boolean(parent.closest('summary'))
+}
+
+const walkerAt = (doc, node) => {
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT)
+    if (node) walker.currentNode = node
+    return walker
+}
+
+const rangeIn = (node, [start, end]) => {
+    const range = node.ownerDocument.createRange()
+    range.setStart(node, start)
+    range.setEnd(node, end)
+    return range
+}
+
+// The word after or before this one, also in other elements. Null at the end of the section.
+const neighbor = (word, forward) => {
+    const node = word.startContainer
+    const inNode = wordsOf(node)
+    const here = inNode.findIndex(([start]) => start === word.startOffset)
+    const next = inNode[here + (forward ? 1 : -1)]
+    if (here >= 0 && next) return rangeIn(node, next)
+    const walker = walkerAt(node.ownerDocument, node)
+    while (forward ? walker.nextNode() : walker.previousNode()) {
+        const words = shown(walker.currentNode) ? wordsOf(walker.currentNode) : []
+        if (words.length) return rangeIn(walker.currentNode, forward ? words[0] : words[words.length - 1])
+    }
+    return null
+}
+
+const firstRect = range => range.getClientRects()[0]
+
+const onScreen = range => {
+    const rect = firstRect(range)
+    const frame = range.startContainer.ownerDocument.defaultView.frameElement?.getBoundingClientRect()
+    if (!rect || !frame) return false
+    const x = frame.left + rect.left + rect.width / 2
+    const y = frame.top + rect.top + rect.height / 2
+    return x >= 0 && x <= window.innerWidth && y >= 0 && y <= window.innerHeight
+}
+
+const firstOnScreen = doc => {
+    const walker = walkerAt(doc)
+    while (walker.nextNode()) {
+        if (!shown(walker.currentNode)) continue
+        for (const words of wordsOf(walker.currentNode)) {
+            const range = rangeIn(walker.currentNode, words)
+            if (onScreen(range)) return range
+        }
+    }
+    return null
+}
+
+// The word in the next or previous line that stands closest above or below this one.
+const wordInLine = (word, forward) => {
+    const start = firstRect(word)
+    if (!start) return null
+    const center = start.left + start.width / 2
+    const beyond = rect => (forward
+        ? rect.top >= start.bottom - 1 || rect.left > start.right + start.width * 4 + 400
+        : rect.bottom <= start.top + 1 || rect.right < start.left - start.width * 4 - 400)
+    let current = neighbor(word, forward)
+    while (current && !beyond(firstRect(current) ?? start)) current = neighbor(current, forward)
+    if (!current) return null
+    const line = firstRect(current)
+    for (;;) {
+        const next = neighbor(current, forward)
+        const rect = next && firstRect(next)
+        if (!rect || Math.abs(rect.top - line.top) > line.height / 2) return current
+        const here = firstRect(current)
+        const distance = r => Math.abs(r.left + r.width / 2 - center)
+        if (distance(rect) >= distance(here)) return current
+        current = next
+    }
 }
 
 const span = (first, last) => {
@@ -87,13 +183,39 @@ export const createMarks = (view, post) => {
     let marking = false
     let hex = '#f5c211'
     let pending = null
+    let cursor = null
+    let keys = Promise.resolve()
     let lastClick = { x: 0, y: 0 }
 
     const contentOf = doc => view.renderer.getContents().find(c => c.doc === doc)
 
+    const drawCursor = () => {
+        if (pending) {
+            const overlayer = contentOf(pending.doc)?.overlayer
+            overlayer?.remove(PREVIEW)
+            if (cursor && cursor.startContainer.ownerDocument === pending.doc && overlayer) {
+                const order = pending.word.compareBoundaryPoints(Range.START_TO_START, cursor)
+                const range = order <= 0 ? span(pending.word, cursor) : span(cursor, pending.word)
+                overlayer.add(PREVIEW, range, Overlayer.highlight, { color: hex })
+            }
+        }
+        for (const { overlayer } of view.renderer.getContents()) overlayer?.remove(CURSOR)
+        if (!cursor) return
+        const doc = cursor.startContainer.ownerDocument
+        const color = doc.defaultView.getComputedStyle(cursor.startContainer.parentElement).color
+        contentOf(doc)?.overlayer?.add(CURSOR, cursor, Overlayer.outline, { color, width: 2, radius: 3, padding: 1 })
+    }
+
+    const clearCursor = () => {
+        cursor = null
+        drawCursor()
+    }
+
     const clearPending = () => {
         if (!pending) return
-        contentOf(pending.doc)?.overlayer?.remove(PENDING)
+        const overlayer = contentOf(pending.doc)?.overlayer
+        overlayer?.remove(PENDING)
+        overlayer?.remove(PREVIEW)
         pending = null
         post('mark-pending', { active: false })
     }
@@ -115,9 +237,7 @@ export const createMarks = (view, post) => {
         })
     }
 
-    const onClick = (doc, x, y) => {
-        const word = wordAt(doc, x, y)
-        if (!word) return
+    const choose = (doc, word) => {
         if (!pending) return startAt(doc, word)
         if (pending.doc !== doc) {
             post('mark-other-chapter')
@@ -126,6 +246,72 @@ export const createMarks = (view, post) => {
         const order = pending.word.compareBoundaryPoints(Range.START_TO_START, word)
         if (order === 0) return finish(doc, word)
         finish(doc, order < 0 ? span(pending.word, word) : span(word, pending.word))
+    }
+
+    const onClick = (doc, x, y) => {
+        const word = wordAt(doc, x, y)
+        if (!word) return
+        if (cursor) cursor = word
+        choose(doc, word)
+        drawCursor()
+    }
+
+    const currentDoc = () => view.renderer.getContents()[0]?.doc
+
+    const placeCursor = async (word, forward) => {
+        cursor = word
+        // The next page comes along by itself when the cursor leaves this one.
+        for (let tries = 0; tries < 3 && word && !onScreen(word); tries++) await (forward ? view.next() : view.prev())
+        drawCursor()
+    }
+
+    // At the end of a section the next one follows. A mark cannot go along, so the cursor starts there anew.
+    const moveTo = async (next, forward) => {
+        if (next) return placeCursor(next, forward)
+        await (forward ? view.next() : view.prev())
+        cursor = currentDoc() ? firstOnScreen(currentDoc()) : null
+        drawCursor()
+    }
+
+    const validCursor = () => {
+        if (cursor && !contentOf(cursor.startContainer.ownerDocument)) cursor = null
+        return cursor
+    }
+
+    const markUnderCursor = () => {
+        const content = contentOf(cursor.startContainer.ownerDocument)
+        const rect = firstRect(cursor)
+        if (!content?.overlayer || !rect) return null
+        for (const key of [CURSOR, PENDING, PREVIEW]) content.overlayer.remove(key)
+        const [value] = content.overlayer.hitTest({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 })
+        if (pending) content.overlayer.add(PENDING, pending.word, Overlayer.outline, { color: hex, width: 2 })
+        drawCursor()
+        return value && marks.has(value) ? { value, doc: content.doc, rect } : null
+    }
+
+    const onKey = async name => {
+        if (!marking) return
+        if (name === 'page-next' || name === 'page-previous') {
+            await (name === 'page-next' ? view.next() : view.prev())
+            if (validCursor() || currentDoc()) cursor = currentDoc() ? firstOnScreen(currentDoc()) : null
+            return drawCursor()
+        }
+        if (!validCursor()) {
+            cursor = pending && contentOf(pending.doc) ? pending.word : currentDoc() && firstOnScreen(currentDoc())
+            if (!cursor) return
+            if (name === 'left' || name === 'right' || name === 'up' || name === 'down') return drawCursor()
+        }
+        if (name === 'right' || name === 'left') return moveTo(neighbor(cursor, name === 'right'), name === 'right')
+        if (name === 'down' || name === 'up') return moveTo(wordInLine(cursor, name === 'down'), name === 'down')
+        if (name === 'choose') {
+            choose(cursor.startContainer.ownerDocument, cursor)
+            return drawCursor()
+        }
+        if (name === 'menu') {
+            const mark = markUnderCursor()
+            if (!mark) return post('mark-none')
+            openMark(mark.value, mark.doc, mark.rect.left + mark.rect.width / 2, mark.rect.top, false, true)
+        }
     }
 
     const draw = async mark => {
@@ -146,9 +332,9 @@ export const createMarks = (view, post) => {
         return null
     }
 
-    const openMark = (cfi, doc, x, y, sign = false) => {
+    const openMark = (cfi, doc, x, y, sign = false, menu = false) => {
         const frame = doc.defaultView.frameElement?.getBoundingClientRect()
-        post('mark-clicked', { cfi, sign, x: Math.round(x + (frame?.left ?? 0)), y: Math.round(y + (frame?.top ?? 0)) })
+        post('mark-clicked', { cfi, sign, menu, x: Math.round(x + (frame?.left ?? 0)), y: Math.round(y + (frame?.top ?? 0)) })
     }
 
     view.addEventListener('draw-annotation', ({ detail: { draw: paint, annotation, doc, range } }) => {
@@ -202,9 +388,20 @@ export const createMarks = (view, post) => {
             marking = on
             hex = nextHex ?? hex
             if (on) view.deselect()
-            else clearPending()
+            else {
+                clearPending()
+                clearCursor()
+            }
         },
-        cancelPending: clearPending,
+        cancelPending() {
+            clearPending()
+            drawCursor()
+        },
+        // One after the other: a held-down key must not overtake itself while a page turns.
+        key(name) {
+            keys = keys.then(() => onKey(name)).catch(error => console.warn('Marking key', name, error))
+            return keys
+        },
         async setAll(list) {
             for (const cfi of [...marks.keys()]) {
                 if (!list.some(mark => mark.cfi === cfi)) await this.drop(cfi)
@@ -223,6 +420,9 @@ export const createMarks = (view, post) => {
         },
         get marking() { return marking },
         get pending() { return Boolean(pending) },
+        get cursor() {
+            return cursor ? { text: cursor.toString(), onScreen: onScreen(cursor) } : null
+        },
         get signs() {
             return [...signs.values()].filter(({ doc }) => contentOf(doc)).map(({ x, y, size }) => ({ x, y, size }))
         },

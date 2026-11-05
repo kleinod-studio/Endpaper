@@ -29,7 +29,7 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 - [x] Marking bar: choose a color, click the first and the last word, or double-click one word; no dragging
 - [x] Click a mark to change its color, add a note or remove it
 - [x] Notes panel beside the text: all marks by chapter, any number of notes in Markdown
-- [ ] Marking with the keyboard alone
+- [x] Marking with the keyboard alone
 - [x] Marks across pages
 - [x] Notes saved as readable `.notes.md` files beside the book
 - [ ] Undo, and open in Typecase

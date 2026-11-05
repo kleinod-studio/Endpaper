@@ -146,7 +146,6 @@ class EndpaperWindow(Adw.ApplicationWindow):
             (_("Previous Page"), "Left Page_Up <Shift>space"),
             (_("Back to Where You Were"), "BackSpace"),
             (_("Table of Contents"), "F9"),
-            (_("Start or Stop Marking"), "<Primary>m"),
             (_("Notes"), "<Primary><Shift>n"),
             (_("Larger Text"), "<Primary>plus"),
             (_("Smaller Text"), "<Primary>minus"),
@@ -155,6 +154,18 @@ class EndpaperWindow(Adw.ApplicationWindow):
         ):
             reading.add(Adw.ShortcutsItem.new(title, accel))
         dialog.add(reading)
+        marking = Adw.ShortcutsSection(title=_("Marking"))
+        for title, accel in (
+            (_("Start or Stop Marking"), "<Primary>m"),
+            (_("Go to Another Word"), "Left Right Up Down"),
+            (_("Choose the First or Last Word"), "Return space"),
+            (_("Forget the Chosen Word, Then Stop Marking"), "Escape"),
+            (_("Choose a Color"), "1 2 3 4"),
+            (_("Underline"), "u"),
+            (_("Options of the Mark at This Word"), "Menu <Shift>F10"),
+        ):
+            marking.add(Adw.ShortcutsItem.new(title, accel))
+        dialog.add(marking)
         general = Adw.ShortcutsSection(title=_("General"))
         for title, accel in ((_("Keyboard Shortcuts"), "<Primary>question"), (_("Close Window"), "<Primary>w"), (_("Quit"), "<Primary>q")):
             general.add(Adw.ShortcutsItem.new(title, accel))

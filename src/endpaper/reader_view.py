@@ -3,7 +3,7 @@
 import json
 import posixpath
 import time
-from gettext import gettext as _
+from gettext import gettext as _, ngettext
 from pathlib import Path
 
 import gi
@@ -14,7 +14,7 @@ gi.require_version("Soup", "3.0")
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Soup, WebKit
 
 from . import config
-from .notes import NotesError, NotesFile
+from .notes import DEFAULT_MARK_COLOR, MARK_COLORS, NotesError, NotesFile, NotesKept
 from .notes_panel import NotesPanel
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -23,6 +23,10 @@ INDEX_URL = "endpaper://app/index.html"
 ALLOWED_NAVIGATION = ("endpaper:", "blob:", "about:")
 OPENABLE_LINKS = ("http://", "https://", "mailto:")
 SAVE_DELAY_MS = 1500
+# The notes flyout, normal and doubled: never narrower than the first number, never wider than the last.
+NOTES_MIN_WIDTH = 300
+NOTES_WIDTH = (0.3, 420)
+NOTES_WIDE_WIDTH = (0.6, 840)
 
 # Keeps a book's scripts from running and anything from loading from outside. Book content is
 # served from blob: URLs, so "script-src 'self'" only ever allows the app's own files.
@@ -32,9 +36,14 @@ CSP = (
     "connect-src 'self' blob:; frame-src blob:; object-src 'none'; form-action 'none'; base-uri 'none'"
 )
 CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript"}
-THEME_BACKGROUNDS = {"light": "#ffffff", "sepia": "#f5eedc", "dark": "#222226"}
-MARK_COLORS = {"yellow": "#f5c211", "green": "#33d17a", "blue": "#62a0ea", "pink": "#f08cc0"}
-DEFAULT_MARK_COLOR = "yellow"
+# Background and text of each theme. reader.js has the same values and what else a book needs.
+THEME_COLORS = {
+    "light": ("#ffffff", "#2e2e32"),
+    "sepia": ("#f5eedc", "#40342a"),
+    "sage": ("#e4ecdf", "#2c3a2e"),
+    "dark": ("#222226", "#e3e3e6"),
+    "black": ("#000000", "#d6d6d6"),
+}
 MARK_KEYS = {
     Gdk.KEY_Left: "left", Gdk.KEY_Right: "right", Gdk.KEY_Up: "up", Gdk.KEY_Down: "down",
     Gdk.KEY_Return: "choose", Gdk.KEY_KP_Enter: "choose", Gdk.KEY_space: "choose",
@@ -43,11 +52,22 @@ MARK_KEYS = {
 
 
 def _mark_color_name(color: str) -> str:
-    return {"yellow": _("Yellow"), "green": _("Green"), "blue": _("Blue"), "pink": _("Pink")}[color]
+    return {"yellow": _("Yellow"), "green": _("Green"), "blue": _("Blue"), "pink": _("Pink"), "purple": _("Purple")}[color]
+
+
+def _theme_name(theme: str) -> str:
+    return {"light": _("Light"), "sepia": _("Sepia"), "sage": _("Sage"), "dark": _("Dark"), "black": _("Black")}[theme]
 
 
 def _install_css() -> None:
-    rules = "".join(f".mark-{name} {{ background: {hex_color}; }}" for name, hex_color in MARK_COLORS.items())
+    rules = "".join(
+        f".mark-{name} {{ background: {hex_color}; }} .note-tint-{name} {{ background-color: alpha({hex_color}, 0.32); }}"
+        for name, hex_color in MARK_COLORS.items()
+    )
+    rules += "".join(
+        f"button.theme-{name}, button.theme-{name}:hover, button.theme-{name}:checked {{ background: {back}; color: {text}; }}"
+        for name, (back, text) in THEME_COLORS.items()
+    )
     provider = Gtk.CssProvider()
     provider.load_from_string(
         rules + """
@@ -68,11 +88,23 @@ def _install_css() -> None:
             box-shadow: 0 0 0 1px alpha(currentColor, 0.1), 0 3px 10px alpha(black, 0.2);
         }
         .mark-bar > viewport > box { padding: 3px 6px; }
+        menubutton.mark-choice > button { min-width: 26px; min-height: 26px; padding: 0; }
+        button.theme-choice {
+            min-width: 40px;
+            min-height: 40px;
+            padding: 0;
+            border-radius: 50%;
+            box-shadow: inset 0 0 0 1px alpha(gray, 0.5);
+        }
+        button.theme-choice:checked { box-shadow: 0 0 0 2px var(--popover-bg-color), 0 0 0 4px var(--accent-bg-color); }
         .note-card { padding: 6px; }
         .note-card > button { font-weight: normal; padding: 6px; }
         .note-loose { padding: 10px; }
         .note-view { background: none; font-size: 0.95em; }
-        .note-row { padding: 0 6px; }
+        .note-row { padding: 6px; border-top: 1px solid alpha(currentColor, 0.25); }
+        .note-row:focus-within { background-color: alpha(var(--view-bg-color), 0.5); }
+        .note-row button { opacity: 0.6; }
+        .note-row button:hover, .note-row button:focus-visible { opacity: 1; }
         .note-quote { font-style: italic; }
         .mark-bar button.suggested-action { min-height: 26px; padding: 0 10px; }
         """
@@ -103,6 +135,7 @@ class ReaderPage(Adw.NavigationPage):
         self._mark_pending = False
         self._mark_color = DEFAULT_MARK_COLOR
         self._open_mark = None
+        self.remove_dialog = None
         self.book_path: Path | None = None
         self.book_key: str | None = None
         self.opened = False
@@ -124,12 +157,14 @@ class ReaderPage(Adw.NavigationPage):
         self.back_button.connect("clicked", lambda _b: self._js("endpaper.back()"))
         header.pack_start(self.back_button)
 
+        menu = Gio.Menu()
+        menu.append(_("Keyboard Shortcuts"), "win.show-shortcuts")
+        menu.append(_("About Endpaper"), "app.about")
+        self.menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic", tooltip_text=_("Main Menu"), menu_model=menu, primary=True)
+        header.pack_end(self.menu_button)
         self.notes_button = Gtk.ToggleButton(icon_name="sidebar-show-right-symbolic", tooltip_text=_("Notes"))
         self.notes_button.update_property([Gtk.AccessibleProperty.LABEL], [_("Notes")])
         header.pack_end(self.notes_button)
-        settings_button = Gtk.MenuButton(icon_name="font-select-symbolic", tooltip_text=_("Text and Layout"))
-        settings_button.set_popover(self._build_settings())
-        header.pack_end(settings_button)
 
         self.toc_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.toc_list.add_css_class("navigation-sidebar")
@@ -156,19 +191,39 @@ class ReaderPage(Adw.NavigationPage):
         escape.connect("key-pressed", self._on_key)
         self.add_controller(escape)
 
-        self.notes_panel = NotesPanel(self._go_to_mark, self._put_mark, self._save_failed)
-        self.notes_split = Adw.OverlaySplitView(
-            content=self.split, sidebar=self._sidebar_page(_("Notes"), self.notes_panel), sidebar_position=Gtk.PackType.END, show_sidebar=False,
-            min_sidebar_width=300, max_sidebar_width=420, sidebar_width_fraction=0.3,
+        self.notes_panel = NotesPanel(
+            self._go_to_mark, self._put_mark, self._save_failed, self.settings["notes_only"], self._on_notes_only,
         )
+        self.notes_wide_button = Gtk.ToggleButton(
+            icon_name="view-fullscreen-symbolic", tooltip_text=_("Double Width"), active=self.settings["notes_wide"],
+        )
+        self.notes_wide_button.update_property([Gtk.AccessibleProperty.LABEL], [_("Double Width")])
+        self.notes_wide_button.connect("toggled", self._on_notes_wide)
+        self.notes_split = Adw.OverlaySplitView(
+            content=self.split, sidebar=self._sidebar_page(_("Notes"), self.notes_panel, self.notes_wide_button),
+            sidebar_position=Gtk.PackType.END, show_sidebar=False, min_sidebar_width=NOTES_MIN_WIDTH,
+        )
+        self._set_notes_width()
         self.notes_button.bind_property("active", self.notes_split, "show-sidebar", GObject.BindingFlags.BIDIRECTIONAL)
         self.notes_split.connect("notify::show-sidebar", self._on_notes_shown)
 
         self.set_child(self.notes_split)
 
-    def _sidebar_page(self, title: str, child: Gtk.Widget) -> Gtk.Widget:
+    def _set_notes_width(self):
+        fraction, widest = NOTES_WIDE_WIDTH if self.settings["notes_wide"] else NOTES_WIDTH
+        self.notes_split.set_max_sidebar_width(widest)
+        self.notes_split.set_sidebar_width_fraction(fraction)
+
+    def _on_notes_wide(self, button):
+        self.settings["notes_wide"] = button.get_active()
+        self._set_notes_width()
+        config.update(reader=self.settings)
+
+    def _sidebar_page(self, title: str, child: Gtk.Widget, start: Gtk.Widget | None = None) -> Gtk.Widget:
         """A sidebar reaches up to the window's edge and has a title bar of its own, as in Typecase."""
         header = Adw.HeaderBar(title_widget=Adw.WindowTitle(title=title), show_back_button=False)
+        if start:
+            header.pack_start(start)
         page = Adw.ToolbarView(content=child)
         page.add_top_bar(header)
         return page
@@ -197,6 +252,13 @@ class ReaderPage(Adw.NavigationPage):
         self.underline_button.update_property([Gtk.AccessibleProperty.LABEL], [_("Underline")])
         self.underline_button.connect("toggled", self._on_underline)
         box.append(self.underline_button)
+        box.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL, margin_start=4, margin_end=4, margin_top=4, margin_bottom=4))
+        self.settings_popover = self._build_settings()
+        self.settings_button = Gtk.MenuButton(
+            icon_name="font-select-symbolic", tooltip_text=_("Text and Layout"), has_frame=False, direction=Gtk.ArrowType.UP,
+            popover=self.settings_popover, css_classes=["mark-choice"],
+        )
+        box.append(self.settings_button)
         self.mark_hint = Gtk.Label(visible=False, margin_start=10, margin_end=6)
         self.mark_hint.add_css_class("dim-label")
         box.append(self.mark_hint)
@@ -287,10 +349,15 @@ class ReaderPage(Adw.NavigationPage):
             self.start_marking()
 
     def _on_key(self, _controller, keyval, _code, state):
-        if self.mark_popover.get_visible():
-            return False  # the menu has its own keys
+        if self.mark_popover.get_visible() or self.settings_popover.get_visible():
+            return False  # a menu has its own keys
         focus = self.get_root().get_focus() if self.get_root() else None
         in_notes = focus is not None and focus.is_ancestor(self.notes_panel)
+        if keyval in (Gdk.KEY_z, Gdk.KEY_Z) and state & Gdk.ModifierType.CONTROL_MASK:
+            if isinstance(focus, (Gtk.TextView, Gtk.Text)):
+                return False  # a text field has its own undo
+            self._undo_mark(redo=bool(state & Gdk.ModifierType.SHIFT_MASK))
+            return True
         if keyval == Gdk.KEY_Escape:
             if self.marking and not in_notes:
                 self.on_escape()
@@ -319,6 +386,25 @@ class ReaderPage(Adw.NavigationPage):
             self.mark_buttons[list(MARK_COLORS)[number]].set_active(True)
             return True
         return False
+
+    def _undo_mark(self, redo: bool = False):
+        if not self.notes:
+            return
+        self.notes_panel.flush()
+        try:
+            done = self.notes.redo() if redo else self.notes.undo()
+        except NotesKept:
+            self.show_message(_("Left as it is, so that nothing you wrote gets lost"))
+            return
+        except NotesError:
+            self._save_failed()
+            done = True
+        if done:
+            self._send_marks()
+            self._notes_changed()
+            self.show_message(_("Change restored") if redo else _("Change undone"))
+        else:
+            self.show_message(_("There is nothing to restore") if redo else _("There is nothing to undo"))
 
     def on_escape(self):
         """First forgets a word that was clicked, then ends marking."""
@@ -427,16 +513,51 @@ class ReaderPage(Adw.NavigationPage):
     def _on_popover_remove(self, _button):
         mark, self._open_mark = self._open_mark, None
         entry = next((e for e in self.notes.entries if e.id == mark), None) if self.notes else None
-        if entry:
-            self.notes_panel.flush()
-            try:
-                self.notes.remove(mark)
-            except NotesError:
-                self._save_failed()
-            if not any(e.cfi == entry.cfi for e in self.notes.entries):
-                self._js(f"endpaper.dropMark({json.dumps(entry.cfi)})")
-            self._notes_changed()
         self.mark_popover.popdown()
+        if not entry:
+            return
+        self.notes_panel.flush()  # what was just typed counts as a note
+        entry = next((e for e in self.notes.entries if e.id == mark), entry)
+        if entry.has_note:
+            self._ask_remove_mark(entry)
+        else:
+            self._remove_mark(entry)
+
+    def _ask_remove_mark(self, entry):
+        count = len(entry.notes)
+        dialog = Adw.AlertDialog(
+            heading=_("Remove Mark and Notes?"),
+            body=ngettext(
+                "The mark and its note will be removed. You can bring them back with Ctrl+Z as long as the book is open.",
+                "The mark and its {count} notes will be removed. You can bring them back with Ctrl+Z as long as the book is open.",
+                count,
+            ).format(count=count),
+        )
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("remove", _("Remove"))
+        dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def respond(_dialog, response):
+            self.remove_dialog = None
+            # Looked up again: the file may have changed elsewhere while the question was open.
+            current = next((e for e in self.notes.entries if e.id == entry.id), None) if self.notes else None
+            if response == "remove" and current:
+                self.notes_panel.flush()
+                self._remove_mark(current)
+        dialog.connect("response", respond)
+        self.remove_dialog = dialog
+        dialog.present(self)
+
+    def _remove_mark(self, entry):
+        try:
+            self.notes.remove(entry.id)
+        except NotesError:
+            self._save_failed()
+        if not any(e.cfi == entry.cfi for e in self.notes.entries):
+            self._js(f"endpaper.dropMark({json.dumps(entry.cfi)})")
+        self._notes_changed()
 
     def _on_popover_add_note(self, _button):
         mark, self._open_mark = self._open_mark, None
@@ -544,11 +665,57 @@ class ReaderPage(Adw.NavigationPage):
             self._apply_settings()
         hyphen.connect("notify::active", hyphen_changed)
         group.add(hyphen)
-        group.add(self._combo(_("Colors"), [("auto", _("Follow System")), ("light", _("Light")), ("sepia", _("Sepia")), ("dark", _("Dark"))], "theme"))
         group.add(self._combo(_("Layout"), [("paginated", _("Pages")), ("scrolled", _("Continuous Scrolling"))], "flow"))
-        group.set_size_request(320, -1)
-        popover = Gtk.Popover(child=group)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.set_size_request(320, -1)
+        box.append(self._build_themes())
+        box.append(group)
+        popover = Gtk.Popover(child=box)
+        popover.connect("closed", self._on_popover_closed)
         return popover
+
+    def _build_themes(self) -> Gtk.Widget:
+        row = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER, margin_top=6)
+        self.theme_buttons, self._theme_guard = {}, False
+        group = None
+        for name in THEME_COLORS:
+            title = _theme_name(name)
+            # Translators: shown on the buttons for the colors of the pages, as a sample of the text
+            button = Gtk.ToggleButton(label=_("Aa"), tooltip_text=title, css_classes=["theme-choice", f"theme-{name}"], group=group)
+            button.update_property([Gtk.AccessibleProperty.LABEL], [title])
+            button.connect("toggled", self._on_theme_button, name)
+            self.theme_buttons[name] = button
+            row.append(button)
+            group = group or button
+        self.theme_follow = Adw.SwitchRow(title=_("Follow the System"), subtitle=_("Light or dark, as the system is set"))
+        self.theme_follow.connect("notify::active", self._on_theme_follow)
+        list_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
+        list_box.append(self.theme_follow)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.append(row)
+        box.append(list_box)
+        self._show_theme()
+        return box
+
+    def _show_theme(self):
+        self._theme_guard = True
+        self.theme_follow.set_active(self.settings["theme"] == "auto")
+        self.theme_buttons[self._resolved_settings()["theme"]].set_active(True)
+        self._theme_guard = False
+
+    def _on_theme_button(self, button, name):
+        if not self._theme_guard and button.get_active():
+            self.settings["theme"] = name
+            self._apply_settings()
+
+    def _on_theme_follow(self, row, _param):
+        if not self._theme_guard:
+            self.settings["theme"] = "auto" if row.get_active() else self._resolved_settings()["theme"]
+            self._apply_settings()
+
+    def _on_notes_only(self, only: bool):
+        self.settings["notes_only"] = only
+        config.update(reader=self.settings)
 
     def _on_size_row(self, row, _param):
         self.settings["font_size"] = int(row.get_value())
@@ -567,9 +734,10 @@ class ReaderPage(Adw.NavigationPage):
         return resolved
 
     def _apply_settings(self, save=True):
+        self._show_theme()
         resolved = self._resolved_settings()
         color = Gdk.RGBA()
-        color.parse(THEME_BACKGROUNDS[resolved["theme"]])
+        color.parse(THEME_COLORS[resolved["theme"]][0])
         self.web.set_background_color(color)
         if self.opened:
             self._js(f"endpaper.applySettings({json.dumps(resolved)})")

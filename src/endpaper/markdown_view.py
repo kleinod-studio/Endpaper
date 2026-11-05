@@ -1,8 +1,15 @@
-"""A text field for notes that shows Markdown as it is typed, as Typecase does."""
+"""A text field for notes that shows Markdown as it is typed, as Typecase does.
+Only while the cursor is in it are the marks visible; otherwise it reads as finished text."""
+
+import re
 
 from gi.repository import Adw, Gdk, GLib, Gtk, Pango
 
 from .markdown_style import FENCE, line_spans
+
+
+# Marks that carry content of their own stay visible while reading: task boxes and footnote labels.
+_STAYS = re.compile(r"^\s*\[[ xX]\]\s*$|^\[\^")
 
 
 class MarkdownView(Gtk.TextView):
@@ -11,6 +18,7 @@ class MarkdownView(Gtk.TextView):
         super().__init__(wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=4, bottom_margin=4, accepts_tab=False, css_classes=["note-view"])
         self.tags = {}
         self._last_width = 0
+        self.editing = False
         buffer = self.get_buffer()
 
         def tag(name, **properties):
@@ -32,6 +40,7 @@ class MarkdownView(Gtk.TextView):
         tag("link", underline=Pango.Underline.SINGLE)
         tag("list-marker", weight=Pango.Weight.BOLD)
         tag("syntax")
+        tag("hidden", invisible=True)
         manager = Adw.StyleManager.get_default()
         self._style_handler = manager.connect("notify::dark", lambda *_a: self._update_colors())
         self.connect("destroy", lambda _v: manager.disconnect(self._style_handler))
@@ -39,6 +48,21 @@ class MarkdownView(Gtk.TextView):
         buffer.set_text(text)
         buffer.connect("changed", lambda _b: self.restyle())
         self.restyle()
+        focus = Gtk.EventControllerFocus()
+        focus.connect("enter", lambda _c: GLib.idle_add(self._on_entered))
+        focus.connect("leave", lambda _c: self._set_editing(False))
+        self.add_controller(focus)
+
+    def _on_entered(self):
+        # Afterwards: the click that brought the focus finds its place in the text as it was shown.
+        if self.has_focus():
+            self._set_editing(True)
+        return GLib.SOURCE_REMOVE
+
+    def _set_editing(self, editing: bool):
+        if editing != self.editing:
+            self.editing = editing
+            self.restyle()
 
     def do_size_allocate(self, width, height, baseline):
         Gtk.TextView.do_size_allocate(self, width, height, baseline)
@@ -59,7 +83,8 @@ class MarkdownView(Gtk.TextView):
     @property
     def text(self) -> str:
         buffer = self.get_buffer()
-        return buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
+        # True: with the hidden marks. They belong to the note and must stay in the file.
+        return buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), True)
 
     def restyle(self):
         """Notes are short enough to go through as a whole on every change."""
@@ -76,5 +101,15 @@ class MarkdownView(Gtk.TextView):
                     _found, from_iter = buffer.get_iter_at_line_offset(number, first)
                     _found, to_iter = buffer.get_iter_at_line_offset(number, last)
                     buffer.apply_tag(tag, from_iter, to_iter)
+                    if name == "syntax" and not self.editing and self._hides(line, first, last):
+                        if fence:  # the whole line goes, not only what is on it
+                            to_iter.forward_line()
+                        buffer.apply_tag(self.tags["hidden"], from_iter, to_iter)
             if fence:
                 in_code_block = not in_code_block
+
+    @staticmethod
+    def _hides(line: str, first: int, last: int) -> bool:
+        if _STAYS.match(line[first:last]):
+            return False
+        return bool(FENCE.match(line)) or not (first == 0 and last == len(line))  # a rule stays

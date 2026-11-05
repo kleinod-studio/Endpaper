@@ -8,7 +8,7 @@ from gi.repository import GLib
 from .fileio import atomic_write_text
 
 SORT_MODES = ("title", "author", "recent")
-THEMES = ("auto", "light", "sepia", "dark")
+THEMES = ("auto", "light", "sepia", "sage", "dark", "black")
 FONTS = ("book", "serif", "sans-serif")
 SPACINGS = ("compact", "normal", "relaxed")
 WIDTHS = ("narrow", "normal", "wide")
@@ -23,6 +23,8 @@ READER_DEFAULTS = {
     "hyphenate": True,
     "theme": "auto",
     "flow": "paginated",
+    "notes_only": False,
+    "notes_wide": False,
 }
 _CHOICES = {"font": FONTS, "spacing": SPACINGS, "width": WIDTHS, "theme": THEMES, "flow": FLOWS}
 

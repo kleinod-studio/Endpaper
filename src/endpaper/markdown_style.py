@@ -6,7 +6,7 @@ in bold, italic, as a heading and so on. Only the code block (```) spans multipl
 
 import re
 
-IMAGE = re.compile(r"!\[([^\]\n]*)\]\(([^)\s]+)[^)]*\)")
+IMAGE = re.compile(r"!\[(?P<caption>[^\]\n]*)\]\(([^)\s]+)[^)]*\)")
 
 Span = tuple[int, int, str]
 

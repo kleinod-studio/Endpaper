@@ -32,7 +32,8 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 - [x] Marking with the keyboard alone
 - [x] Marks across pages
 - [x] Notes saved as readable `.notes.md` files beside the book
-- [ ] Undo, and open in Typecase
+- [x] Undo and redo for changes to marks
+- [ ] Open in Typecase
 - [ ] Previews of footnotes and references, without leaving the page
 
 ## Phase 3: Search

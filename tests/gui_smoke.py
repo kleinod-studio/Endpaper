@@ -31,11 +31,11 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Graphene", "1.0")
-from gi.repository import Adw, GLib, Graphene  # noqa: E402
+from gi.repository import Adw, GLib, Graphene, Gtk  # noqa: E402
 
 from endpaper import config, library  # noqa: E402
 from endpaper.main import EndpaperApplication  # noqa: E402
-from endpaper.notes import NotesFile
+from endpaper.notes import MARK_COLORS, NotesFile, NotesKept
 from make_epub import make_epub, make_figures_epub, make_hostile_epub, make_styled_epub  # noqa: E402
 
 failures = []
@@ -86,6 +86,16 @@ def js(reader, script):
     reader._js(script, lambda value: box.update(done=True, value=value))
     wait_for(lambda: box.get("done"), 15)
     return box.get("value")
+
+
+def remove_note(row):
+    """The trash button, then the answer in the dialog that asks first."""
+    panel = row.panel
+    row.remove_button.emit("clicked")
+    dialog = panel.remove_dialog
+    if dialog:
+        dialog.emit("response", "remove")
+        dialog.force_close()
 
 
 def scenario(app, window):
@@ -305,7 +315,7 @@ def scenario(app, window):
     colors = lambda name: js(reader, f"endpaper.colorsOf({json.dumps(name)})")
     check(colors("head")["color"] == "rgb(47, 95, 99)", "light colors keep the book's own design")
     anchor = js(reader, 'endpaper.selectionAnchor("inbox")')
-    for theme in ("dark", "sepia"):
+    for theme in ("dark", "sepia", "sage", "black"):
         reader.settings["theme"] = theme
         reader._apply_settings()
         spin(0.4)
@@ -579,7 +589,7 @@ def scenario(app, window):
     spin(0.4)
     reader.notes_button.set_active(True)
     check(wait_for(fits, 5), "also when the flyout opens again")
-    wrapping.remove_button.emit("clicked")
+    remove_note(wrapping)
     spin(0.2)
     row().view.grab_focus()
     panel.add_empty_row(single.id)
@@ -595,7 +605,7 @@ def scenario(app, window):
     check(wait_for(lambda: [n.id for n in saved().notes] == [first_note]), "an emptied field takes its note away")
     second.view.get_buffer().set_text("Back again")
     check(wait_for(lambda: [n.text for n in saved().notes] == [long_text, "Back again"]), "and typing brings it back")
-    second.remove_button.emit("clicked")
+    remove_note(second)
     check(wait_for(lambda: [n.id for n in saved().notes] == [first_note]), "the bin removes one note")
     check(len(state()["signs"]) == 1, "the sign stays for the other")
     window.lookup_action("toggle-notes").activate(None)
@@ -625,7 +635,8 @@ def scenario(app, window):
     check(not reader.mark_popover.get_visible(), "clicks beside a mark do not open it")
     js(reader, f"endpaper.clickAt({sign['x'] + 6}, {sign['y'] + 6})")
     check(wait_for(lambda: reader.notes_split.get_show_sidebar()), "a click on the sign opens the flyout")
-    check(wait_for(lambda: window.get_focus() is row().view), "at the note")
+    check(wait_for(lambda: reader.notes_panel.cards[single.id].get_first_child().has_focus()), "at the mark")
+    check(not row().view.editing, "to read, not yet to write")
     check(not reader.mark_popover.get_visible(), "without the menu")
     window.lookup_action("toggle-notes").activate(None)
     wait_for(lambda: not reader.notes_split.get_show_sidebar())
@@ -648,9 +659,194 @@ def scenario(app, window):
     check(wait_for(lambda: reader.mark_popover.get_visible()), "the mark can still be opened")
     drawn = state()["drawn"]
     reader.popover_remove.emit("clicked")
+    dialog = reader.remove_dialog
+    check(dialog is not None, "a mark with a note asks first")
+    dialog.emit("response", "remove")
+    dialog.force_close()
     check(wait_for(lambda: state()["drawn"] == drawn - 1), "removing takes it out of the text")
     check(all(e.id != single.id for e in NotesFile(LIB / "marks.epub").entries), "and out of the file")
     check(wait_for(lambda: state()["signs"] == []), "and its sign with it")
+
+    print("Undo")
+    undo_key = lambda: reader._on_key(None, Gdk.KEY_z, 0, Gdk.ModifierType.CONTROL_MASK)
+    redo_key = lambda: reader._on_key(None, Gdk.KEY_Z, 0, Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK)
+    reader.web.grab_focus()
+    spin(0.2)
+    count = len(reader.notes.entries)
+    known = {e.id for e in reader.notes.entries}
+    drawn = state()["drawn"]
+    reader.mark_buttons["yellow"].set_active(True)
+    click("p:nth-of-type(7)", "Sentence")
+    wait_for(lambda: state()["pending"])
+    click("p:nth-of-type(7)", "while")
+    check(wait_for(lambda: len(reader.notes.entries) == count + 1) and wait_for(lambda: state()["drawn"] == drawn + 1), "a new mark")
+    new_mark = next(e for e in reader.notes.entries if e.id not in known)
+    reader.mark_done.emit("clicked")
+    wait_for(lambda: not state()["marking"])
+    check(undo_key() is True and len(reader.notes.entries) == count, "Ctrl+Z takes it back")
+    check(wait_for(lambda: state()["drawn"] == drawn), "out of the text as well")
+    check(all(e.id != new_mark.id for e in NotesFile(LIB / "marks.epub").entries), "and out of the file")
+    check(redo_key() is True and any(e.id == new_mark.id for e in reader.notes.entries), "Ctrl+Shift+Z brings it back")
+    check(wait_for(lambda: state()["drawn"] == drawn + 1), "into the text as well")
+    click("p:nth-of-type(7)", "Sentence")
+    check(wait_for(lambda: reader.mark_popover.get_visible()), "the menu of the mark")
+    check(undo_key() is False, "while the menu is open, the keys stay there")
+    reader.popover_remove.emit("clicked")
+    check(wait_for(lambda: state()["drawn"] == drawn), "removing the mark")
+    spin(0.2)
+    undo_key()
+    check(any(e.id == new_mark.id for e in NotesFile(LIB / "marks.epub").entries) and wait_for(lambda: state()["drawn"] == drawn + 1), "a removed mark comes back")
+    undo_key()
+    undo_key()
+    check(all(e.id != new_mark.id for e in reader.notes.entries), "and further back it is gone")
+    messages.clear()
+    for _times in range(300):
+        undo_key()
+        if messages and "nothing" in messages[-1]:
+            break
+        messages.clear()
+    check(messages and "nothing" in messages[-1], "at the very start there is a clear message")
+    for _times in range(300):
+        messages.clear()
+        redo_key()
+        if messages and "nothing" in messages[-1]:
+            break
+    check(len(reader.notes.entries) >= count, "everything can be restored")
+    def refuse():
+        raise NotesKept("a mark")
+    reader.notes._undo.append((refuse, refuse))
+    messages.clear()
+    check(undo_key() is True and messages and "nothing you wrote" in messages[-1], "what would lose writing is left out, with a message")
+    window.lookup_action("toggle-notes").activate(None)
+    wait_for(lambda: reader.notes_panel.cards)
+    reader.notes_panel.add_empty_row(next(iter(reader.notes_panel.cards)))
+    field = next(r for r in reader.notes_panel.rows if r.note_id is None)
+    wait_for(lambda: window.get_focus() is field.view)
+    check(undo_key() is False, "in a note field, Ctrl+Z belongs to the field")
+    field.view.get_buffer().set_text("A note to throw away")
+    field.save()
+    owner = next(e for e in reader.notes.entries if e.id == field.entry_id)
+    check(any(n.text == "A note to throw away" for n in owner.notes), "a note")
+    remove_note(field)
+    owner = next(e for e in reader.notes.entries if e.id == field.entry_id)
+    check(not any(n.text == "A note to throw away" for n in owner.notes), "thrown away with the bin")
+    reader.web.grab_focus()
+    undo_key()
+    owner = next(e for e in NotesFile(LIB / "marks.epub").entries if e.id == owner.id)
+    check(any(n.text == "A note to throw away" for n in owner.notes), "can come back")
+    check(wait_for(lambda: any(r.view.text == "A note to throw away" for r in reader.notes_panel.rows)), "also in the flyout")
+    window.lookup_action("toggle-notes").activate(None)
+    wait_for(lambda: not reader.notes_split.get_show_sidebar())
+
+    print("Notes read as finished text")
+    panel = reader.notes_panel
+    window.lookup_action("toggle-notes").activate(None)
+    wait_for(lambda: panel.cards)
+    reader.web.grab_focus()
+    first_card = next(iter(panel.cards))
+    panel.add_empty_row(first_card)
+    field = next(r for r in panel.rows if r.note_id is None)
+    written = "# Title\n\nSome **bold** and a [link](https://example.org)\n\n- [ ] A task and[^1]\n\n---\n\n```\ncode\n```"
+    wait_for(lambda: field.view.has_focus())
+    field.view.get_buffer().set_text(written)
+    check(wait_for(lambda: field.view.editing), "while writing, the marks are there")
+    hidden = lambda text: field.view.get_buffer().get_iter_at_offset(written.index(text)).has_tag(field.view.tags["hidden"])
+    check(not hidden("**"), "visibly")
+    reader.web.grab_focus()
+    check(wait_for(lambda: not field.view.editing), "without the cursor, it is for reading")
+    check(hidden("**") and hidden("# ") and hidden("](https") and hidden("```"), "and the marks are gone from view")
+    check(not hidden("bold") and not hidden("[ ]") and not hidden("[^1]") and not hidden("---"), "while text, task boxes, footnotes and rules stay")
+    check(field.view.text == written, "the field still holds all of it")
+    saved_note = next(e for e in NotesFile(LIB / "marks.epub").entries if e.id == first_card).note(field.note_id)
+    check(saved_note is not None and saved_note.text == written, "and so does the file")
+    field.view.grab_focus()
+    check(wait_for(lambda: field.view.editing and not hidden("**")), "clicking in brings the marks back")
+    reader.web.grab_focus()
+    remove_note(field)
+    window.lookup_action("toggle-notes").activate(None)
+    wait_for(lambda: not reader.notes_split.get_show_sidebar())
+
+    print("A wider flyout")
+    reader.notes_button.set_active(True)
+    spin(0.5)
+    sidebar = reader.notes_split.get_sidebar()
+    normal = sidebar.get_width()
+    reader.notes_wide_button.set_active(True)
+    check(wait_for(lambda: sidebar.get_width() == normal * 2, 5), f"one click doubles the width ({normal} px)")
+    check(config.reader_settings()["notes_wide"] is True, "and is remembered")
+    reader.notes_wide_button.set_active(False)
+    check(wait_for(lambda: sidebar.get_width() == normal, 5), "another click brings it back")
+    check(config.reader_settings()["notes_wide"] is False, "also when remembered")
+    reader.notes_button.set_active(False)
+    spin(0.3)
+
+    print("Fine tuning")
+    check(not os.environ.get("ENDPAPER_CODE") and Gtk.IconTheme.get_for_display(window.get_display()).has_icon("studio.kleinod.Endpaper") or bool(os.environ.get("ENDPAPER_CODE")), "the logo is found for the About window")
+    check(reader.menu_button.get_mapped() and reader.menu_button.get_primary(), "the main menu is there while reading")
+    check(reader.settings_button.get_mapped() and reader.settings_button.is_ancestor(reader.overlay), "text and layout are in the bar below the text")
+    check(len(reader.theme_buttons) == 5 and len(reader.mark_buttons) == 5, "five themes and five colors")
+    reader.theme_buttons["sage"].set_active(True)
+    check(wait_for(lambda: js(reader, "endpaper.bookDocument()")["background"] == "rgb(228, 236, 223)"), "a theme button reaches the book")
+    check(config.reader_settings()["theme"] == "sage" and not reader.theme_follow.get_active(), "and is remembered")
+    reader.theme_buttons["black"].set_active(True)
+    check(wait_for(lambda: js(reader, "endpaper.bookDocument()")["background"] == "rgb(0, 0, 0)"), "black reaches the book")
+    reader.theme_follow.set_active(True)
+    check(config.reader_settings()["theme"] == "auto", "following the system can be chosen")
+    expected = "dark" if Adw.StyleManager.get_default().get_dark() else "light"
+    check(reader.theme_buttons[expected].get_active(), "and shows which theme that is")
+    reader.theme_follow.set_active(False)
+    check(config.reader_settings()["theme"] == expected, "leaving it keeps that look")
+    reader.theme_buttons["light"].set_active(True)
+    check(MARK_COLORS["purple"] and reader.mark_buttons["purple"].get_tooltip_text(), "the fifth color has a name")
+    panel = reader.notes_panel
+    window.lookup_action("toggle-notes").activate(None)
+    wait_for(lambda: panel.cards)
+    with_note = next(e for e in reader.notes.entries if e.has_note)
+    without = next(e for e in reader.notes.entries if not e.has_note)
+    check(with_note.id in panel.cards and without.id in panel.cards, "all marks are shown at first")
+    check(panel.cards[with_note.id].has_css_class(f"note-tint-{with_note.color}"), "the box has the color of its mark")
+    panel.only_notes.set_active(True)
+    check(with_note.id in panel.cards and without.id not in panel.cards, "the switch leaves the marks with notes")
+    check(config.reader_settings()["notes_only"] is True, "the switch is remembered")
+    panel.show_entry(without.id, new_note=True)
+    check(without.id in panel.cards, "a mark asked for by name is shown even so")
+    panel.only_notes.set_active(False)
+    panel.only_notes.set_active(True)
+    check(without.id not in panel.cards, "and goes again with the switch")
+    panel.only_notes.set_active(False)
+    empty_row = (panel.add_empty_row(without.id), next(r for r in panel.rows if r.note_id is None))[1]
+    empty_row.remove_button.emit("clicked")
+    check(panel.remove_dialog is None and empty_row not in panel.rows, "an empty field goes without asking")
+    written = next(r for r in panel.rows if r.note_id)
+    text, kept = written.view.text, len(panel.rows)
+    written.remove_button.emit("clicked")
+    dialog = panel.remove_dialog
+    check(dialog is not None and len(panel.rows) == kept, "a written note asks first")
+    dialog.emit("response", "cancel")
+    dialog.force_close()
+    entry = next(e for e in reader.notes.entries if e.id == written.entry_id)
+    check(entry.note(written.note_id).text == text and written in panel.rows, "Cancel keeps it")
+    window.lookup_action("toggle-notes").activate(None)
+    wait_for(lambda: not reader.notes_split.get_show_sidebar())
+    noted = next(e for e in reader.notes.entries if e.has_note)
+    texts = [n.text for n in noted.notes]
+    reader._open_mark = noted.id
+    reader.popover_remove.emit("clicked")
+    dialog = reader.remove_dialog
+    check(dialog is not None and any(e.id == noted.id for e in reader.notes.entries), "a mark with notes asks first")
+    dialog.emit("response", "cancel")
+    dialog.force_close()
+    check(any(e.id == noted.id for e in NotesFile(LIB / "marks.epub").entries), "Cancel keeps it")
+    reader._open_mark = noted.id
+    reader.popover_remove.emit("clicked")
+    dialog = reader.remove_dialog
+    dialog.emit("response", "remove")
+    dialog.force_close()
+    check(all(e.id != noted.id for e in NotesFile(LIB / "marks.epub").entries), "Remove takes it away")
+    undo_key()
+    back = next((e for e in NotesFile(LIB / "marks.epub").entries if e.id == noted.id), None)
+    check(back is not None and [n.text for n in back.notes] == texts, "Ctrl+Z brings it back with its notes")
+    spin(0.3)
 
     print("Marks and the outside world")
     long_note = "This note was written earlier and has to wrap over several lines in the flyout. " * 4

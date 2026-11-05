@@ -10,9 +10,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from endpaper import library  # noqa: E402
+from endpaper import markdown_style  # noqa: E402
 from endpaper import notes  # noqa: E402
 from endpaper.library import Book  # noqa: E402
-from endpaper.notes import Entry, Note, NotesError, NotesFile, parse, serialize  # noqa: E402
+from endpaper.notes import Entry, Note, NotesError, NotesFile, NotesKept, parse, serialize  # noqa: E402
 
 CFI = "epubcfi(/6/4!/4/2,/1:0,/1:10)"
 
@@ -270,6 +271,136 @@ class NotesFileTest(unittest.TestCase):
         file.add_note(entry.id, long.strip())
         self.assertEqual(texts(self.open().entries[0]), ["\n\n".join(f"Paragraph {n} " + "word " * 200 for n in range(500)).strip()])
 
+    def test_undo_takes_back_a_new_mark_and_redo_brings_it_back(self):
+        file = self.open()
+        entry = file.add(CFI, "Quote")
+        self.assertTrue(file.undo())
+        self.assertEqual(self.open().entries, [])
+        self.assertTrue(file.redo())
+        self.assertEqual([e.id for e in self.open().entries], [entry.id])
+        self.assertFalse(file.redo())
+
+    def test_undo_brings_a_removed_mark_back_with_its_notes_and_place(self):
+        file = self.open()
+        first = file.add("c1", "One", chapter="A")
+        second = file.add("c2", "Two", "My note", chapter="A")
+        third = file.add("c3", "Three", chapter="A")
+        file.add_note(second.id, "Another note")
+        file.remove(second.id)
+        self.assertEqual([e.id for e in self.open().entries], [first.id, third.id])
+        file.undo()
+        saved = self.open().entries
+        self.assertEqual([e.id for e in saved], [first.id, second.id, third.id])
+        self.assertEqual(texts(saved[1]), ["My note", "Another note"])
+        file.redo()
+        self.assertEqual([e.id for e in self.open().entries], [first.id, third.id])
+
+    def test_undo_restores_color_and_style(self):
+        file = self.open()
+        entry = file.add(CFI, "Quote")
+        file.update(entry.id, color="green")
+        file.update(entry.id, style="underline")
+        file.undo()
+        self.assertEqual((self.open().entries[0].color, self.open().entries[0].style), ("green", "highlight"))
+        file.undo()
+        self.assertEqual(self.open().entries[0].color, "yellow")
+        file.redo()
+        file.redo()
+        self.assertEqual((self.open().entries[0].color, self.open().entries[0].style), ("green", "underline"))
+
+    def test_undo_brings_a_removed_note_back_in_its_place(self):
+        file = self.open()
+        entry = file.add(CFI, "Quote")
+        file.add_note(entry.id, "First")
+        second = file.add_note(entry.id, "Second")
+        file.add_note(entry.id, "Third")
+        file.remove_note(entry.id, second.id, undoable=True)
+        self.assertEqual(texts(self.open().entries[0]), ["First", "Third"])
+        file.undo()
+        self.assertEqual(texts(self.open().entries[0]), ["First", "Second", "Third"])
+        file.redo()
+        self.assertEqual(texts(self.open().entries[0]), ["First", "Third"])
+
+    def test_undo_never_takes_away_a_note_written_since(self):
+        file = self.open()
+        entry = file.add(CFI, "Quote")
+        note = file.add_note(entry.id, "Typed")
+        file.update_note(entry.id, note.id, "Typed more")
+        with self.assertRaises(NotesKept):
+            file.undo()
+        self.assertEqual(texts(self.open().entries[0]), ["Typed more"])
+        self.assertFalse(file.undo(), "that step is used up")
+
+    def test_redo_never_takes_away_a_note_written_since(self):
+        file = self.open()
+        entry = file.add(CFI, "Quote", "Note")
+        file.remove(entry.id)
+        file.undo()
+        file.add_note(entry.id, "Written after the undo")
+        with self.assertRaises(NotesKept):
+            file.redo()
+        self.assertEqual(texts(self.open().entries[0]), ["Note", "Written after the undo"])
+
+    def test_redo_never_takes_away_a_note_changed_since(self):
+        file = self.open()
+        entry = file.add(CFI, "Quote")
+        note = file.add_note(entry.id, "Note")
+        file.remove_note(entry.id, note.id, undoable=True)
+        file.undo()
+        file.update_note(entry.id, note.id, "Note, changed")
+        with self.assertRaises(NotesKept):
+            file.redo()
+        self.assertEqual(texts(self.open().entries[0]), ["Note, changed"])
+
+    def test_a_new_change_ends_redo(self):
+        file = self.open()
+        file.add("c1")
+        file.undo()
+        file.add("c2")
+        self.assertFalse(file.redo())
+        self.assertEqual([e.cfi for e in self.open().entries], ["c2"])
+
+    def test_steps_are_undone_in_reverse_order(self):
+        file = self.open()
+        for number in range(5):
+            file.add(f"c{number}")
+        for expected in (4, 3, 2, 1, 0):
+            self.assertEqual(len(self.open().entries), expected + 1)
+            file.undo()
+        self.assertEqual(self.open().entries, [])
+        self.assertFalse(file.undo())
+
+    def test_undo_keeps_what_changed_elsewhere(self):
+        file = self.open()
+        file.add(CFI, "Quote", "base")
+        self.outside(lambda text: text.replace("base", "changed outside"))
+        with self.assertRaises(NotesKept):
+            file.undo()
+        self.assertEqual(texts(self.open().entries[0]), ["changed outside"])
+
+    def test_undo_skips_what_is_gone(self):
+        file = self.open()
+        first = file.add("c1", "One")
+        file.update(first.id, color="green")
+        second = file.add("c2", "Two")
+        file.update(second.id, color="blue")
+        self.path.write_text(serialize([notes.Heading(1, "A Book"), first]), encoding="utf-8")
+        file.refresh()
+        self.assertTrue(file.undo(), "what is gone cannot be undone: on to the step before")
+        self.assertEqual([(e.id, e.color) for e in self.open().entries], [(first.id, "yellow")])
+
+    def test_undo_is_saved_atomically_like_everything_else(self):
+        file = self.open()
+        file.add("c1", text="safe")
+        file.add("c2", text="second")
+        before = self.path.read_bytes()
+        with mock.patch("endpaper.fileio.os.replace", side_effect=OSError("disk full")):
+            with self.assertRaises(NotesError):
+                file.undo()
+        self.assertEqual(self.path.read_bytes(), before)
+        file.flush()
+        self.assertEqual([e.cfi for e in self.open().entries], ["c1"])
+
     def test_a_failed_save_leaves_the_file_and_keeps_the_change(self):
         file = self.open()
         file.add("c1", text="safe")
@@ -473,6 +604,12 @@ class NotesFileTest(unittest.TestCase):
             library.move_book(Book(self.book, self.folder), category)
         self.assertTrue(self.book.exists())
         self.assertEqual(conflict.read_text(encoding="utf-8"), "mine")
+
+
+class MarkdownStyleTest(unittest.TestCase):
+    def test_an_image_in_a_note_is_recognized(self):
+        spans = markdown_style.line_spans("![A caption](picture.png) and text", False)
+        self.assertEqual(spans[0], (0, 2, "syntax"))
 
 
 if __name__ == "__main__":

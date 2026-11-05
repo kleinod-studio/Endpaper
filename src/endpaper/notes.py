@@ -46,10 +46,17 @@ IN_NOTE_ESCAPED = re.compile(r"^\\(\\*<!--\s*endpaper)")
 STRUCTURE = r"(?:#{1,6}\s|>|<!--\s*endpaper:)"
 ESCAPED = re.compile(rf"^\\(\\*{STRUCTURE})")
 CFI_SAFE = "/!:,()[]^~@;=."
+UNDO_LIMIT = 200
+MARK_COLORS = {"yellow": "#f5c211", "green": "#33d17a", "blue": "#62a0ea", "pink": "#f08cc0", "purple": "#b28cf0"}
+DEFAULT_MARK_COLOR = "yellow"
 
 
 class NotesError(Exception):
     """The notes could not be saved. They stay in memory, and the next change tries again."""
+
+
+class NotesKept(Exception):
+    """An undo or redo was left out because it would have taken away something written since."""
 
 
 @dataclass
@@ -319,6 +326,25 @@ def _apply_remove(blocks: list, base: Entry) -> None:
         blocks.remove(current)  # what was changed elsewhere meanwhile stays
 
 
+def _apply_restore(blocks: list, entry: Entry, after: str | None) -> None:
+    """Puts a removed mark back where it was, as far as that place still exists."""
+    if _find(blocks, entry.id):
+        return
+    previous = _find(blocks, after) if after else None
+    if previous:
+        blocks.insert(next(i for i, b in enumerate(blocks) if b is previous) + 1, entry)
+    else:
+        _insert(blocks, entry)
+
+
+def _apply_restore_note(blocks: list, base: Entry, note: Note, index: int) -> None:
+    current = _find(blocks, base.id)
+    if current is None:
+        _insert(blocks, base)
+    elif current.note(note.id) is None:
+        current.notes.insert(min(index, len(current.notes)), note)
+
+
 def _apply_add_note(blocks: list, base: Entry, note: Note) -> None:
     current = _find(blocks, base.id)
     if current is None:  # removed elsewhere, written here: the note is worth keeping
@@ -362,6 +388,8 @@ class NotesFile:
         self.conflict_path: Path | None = None
         self._saved: list = []  # as it is on disk
         self._pending: list = []  # changes not written yet
+        self._undo: list = []  # (undo, redo), each a function that makes the change
+        self._redo: list = []
         self._known: bytes | None = None
         self.blocks: list = []  # as the reader should see it
         self.refresh()
@@ -380,6 +408,8 @@ class NotesFile:
         chapter = " ".join(chapter.split()) or None if chapter else None
         notes = [Note(secrets.token_hex(4), text)] if text.strip() else []
         entry = Entry(_new_id({e.id for e in self.entries}), cfi, quote, notes, chapter, color, style)
+        saved = copy.deepcopy(entry)
+        self._record(lambda: self._take_back(saved), lambda: self._restore(saved, None))
         self._change(_apply_add, copy.deepcopy(entry))
         return _find(self.blocks, entry.id) or entry
 
@@ -387,16 +417,72 @@ class NotesFile:
         unknown = set(changes) - {"color", "style"}
         if unknown:
             raise ValueError(f"cannot change {unknown}")
-        base = _find(self.blocks, entry_id)
-        if base is None:
-            raise KeyError(entry_id)
-        self._change(_apply_update, copy.deepcopy(base), changes)
+        base = self._entry(entry_id)
+        before = {key: getattr(base, key) for key in changes}
+        self._record(lambda: self._update(entry_id, before), lambda: self._update(entry_id, changes))
+        self._update(entry_id, changes)
 
     def remove(self, entry_id: str) -> None:
-        base = _find(self.blocks, entry_id)
-        if base is None:
-            raise KeyError(entry_id)
-        self._change(_apply_remove, copy.deepcopy(base))
+        base = copy.deepcopy(self._entry(entry_id))
+        entries = self.entries
+        place = next(i for i, e in enumerate(entries) if e.id == entry_id)
+        after = entries[place - 1].id if place else None
+        self._record(lambda: self._restore(base, after), lambda: self._take_back(base))
+        self._remove(entry_id)
+
+    def _update(self, entry_id: str, changes: dict) -> None:
+        self._change(_apply_update, copy.deepcopy(self._entry(entry_id)), changes)
+
+    def _remove(self, entry_id: str) -> None:
+        self._change(_apply_remove, copy.deepcopy(self._entry(entry_id)))
+
+    def _take_back(self, original: Entry) -> None:
+        """Removes a mark only as it was: notes written since then must not go with it."""
+        self.refresh()
+        current = self._entry(original.id)
+        if [n.text for n in current.notes] != [n.text for n in original.notes]:
+            raise NotesKept(original.id)
+        self._change(_apply_remove, copy.deepcopy(original))
+
+    def _take_back_note(self, entry_id: str, kept: Note) -> None:
+        self.refresh()
+        current = self._entry(entry_id)
+        note = current.note(kept.id)
+        if note is None:
+            raise KeyError(kept.id)
+        if note.text != kept.text:
+            raise NotesKept(entry_id)
+        self._change(_apply_remove_note, copy.deepcopy(current), kept.id, kept.text)
+
+    def _restore(self, entry: Entry, after: str | None) -> None:
+        self._change(_apply_restore, copy.deepcopy(entry), after)
+
+    def _record(self, undo, redo) -> None:
+        self._undo = [*self._undo, (undo, redo)][-UNDO_LIMIT:]
+        self._redo = []
+
+    def undo(self) -> bool:
+        """Takes back the last change to a mark. False if there is none. Writing in a note is not part
+        of this: its field has its own undo. Raises NotesKept instead of losing what was written since;
+        that step is then used up, so the next undo goes on with the one before."""
+        return self._step(self._undo, self._redo, 0)
+
+    def redo(self) -> bool:
+        return self._step(self._redo, self._undo, 1)
+
+    def _step(self, source: list, target: list, which: int) -> bool:
+        while source:
+            step = source.pop()
+            try:
+                step[which]()
+            except KeyError:
+                continue  # taken away elsewhere meanwhile: on to the step before
+            except NotesError:
+                target.append(step)  # done in memory, and written as soon as that works again
+                raise
+            target.append(step)
+            return True
+        return False
 
     def _entry(self, entry_id: str) -> Entry:
         base = _find(self.blocks, entry_id)
@@ -417,11 +503,18 @@ class NotesFile:
             raise KeyError(note_id)
         self._change(_apply_update_note, copy.deepcopy(base), note_id, note.text, text)
 
-    def remove_note(self, entry_id: str, note_id: str) -> None:
+    def remove_note(self, entry_id: str, note_id: str, undoable: bool = False) -> None:
+        """undoable: a note taken away on purpose can come back. A field emptied by typing has its own undo."""
         base = self._entry(entry_id)
         note = base.note(note_id)
         if note is None:
             raise KeyError(note_id)
+        if undoable:
+            saved, kept, index = copy.deepcopy(base), copy.copy(note), base.notes.index(note)
+            self._record(
+                lambda: self._change(_apply_restore_note, copy.deepcopy(saved), copy.copy(kept), index),
+                lambda: self._take_back_note(entry_id, kept),
+            )
         self._change(_apply_remove_note, copy.deepcopy(base), note_id, note.text)
 
     def refresh(self) -> bool:

@@ -160,9 +160,11 @@ class EndpaperWindow(Adw.ApplicationWindow):
             (_("Go to Another Word"), "Left Right Up Down"),
             (_("Choose the First or Last Word"), "Return space"),
             (_("Forget the Chosen Word, Then Stop Marking"), "Escape"),
-            (_("Choose a Color"), "1 2 3 4"),
+            (_("Choose a Color"), "1 2 3 4 5"),
             (_("Underline"), "u"),
             (_("Options of the Mark at This Word"), "Menu <Shift>F10"),
+            (_("Undo the Last Change to a Mark"), "<Primary>z"),
+            (_("Restore the Change"), "<Primary><Shift>z"),
         ):
             marking.add(Adw.ShortcutsItem.new(title, accel))
         dialog.add(marking)

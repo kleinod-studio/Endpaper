@@ -6,7 +6,7 @@ from gi.repository import Adw, GLib, Gtk
 
 from .library import conflict_paths_for
 from .markdown_view import MarkdownView
-from .notes import NotesError
+from .notes import DEFAULT_MARK_COLOR, MARK_COLORS, NotesError
 
 SAVE_DELAY_MS = 500
 QUOTE_LINES = 4
@@ -36,7 +36,7 @@ class _NoteRow(Gtk.Box):
             icon_name="user-trash-symbolic", tooltip_text=_("Remove Note"), valign=Gtk.Align.START, css_classes=["flat", "circular"],
         )
         self.remove_button.update_property([Gtk.AccessibleProperty.LABEL], [_("Remove Note")])
-        self.remove_button.connect("clicked", lambda _b: panel.remove_row(self))
+        self.remove_button.connect("clicked", lambda _b: panel.ask_remove_row(self))
         row.append(self.remove_button)
         self.append(row)
 
@@ -69,11 +69,14 @@ class _NoteRow(Gtk.Box):
 
 class NotesPanel(Gtk.Box):
     """on_jump(cfi): show this place in the book. on_mark_changed(entry): a mark looks different now.
-    on_save_failed(): tell the reader."""
+    on_save_failed(): tell the reader. on_only_notes(active): remember the switch."""
 
-    def __init__(self, on_jump, on_mark_changed, on_save_failed):
+    def __init__(self, on_jump, on_mark_changed, on_save_failed, only_notes=False, on_only_notes=lambda _active: None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.on_jump, self.on_mark_changed, self.on_save_failed = on_jump, on_mark_changed, on_save_failed
+        self.on_only_notes = on_only_notes
+        self.shown_anyway: set[str] = set()  # asked for by name, even if the switch would hide it
+        self.remove_dialog = None
         self.notes = None
         self.rows: list[_NoteRow] = []
         self.cards: dict[str, Gtk.Box] = {}
@@ -88,15 +91,28 @@ class NotesPanel(Gtk.Box):
             description=_("Choose a color below the text, then click the first and the last word."),
             css_classes=["compact"], vexpand=True,
         )
+        self.only_notes = Adw.SwitchRow(title=_("Only Marks with Notes"), active=only_notes)
+        self.only_notes.connect("notify::active", self._on_only_notes)
+        self.filter_box = Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"], margin_top=12, margin_start=12, margin_end=12,
+        )
+        self.filter_box.append(self.only_notes)
+        self.append(self.filter_box)
         self.stack = Gtk.Stack()
         self.stack.add_named(scroller, "list")
         self.stack.add_named(self.empty, "empty")
         self.append(self.stack)
         self.update_property([Gtk.AccessibleProperty.LABEL], [_("Notes")])
 
+    def _on_only_notes(self, row, _param):
+        self.shown_anyway.clear()
+        self.rebuild()
+        self.on_only_notes(row.get_active())
+
     def set_notes(self, notes) -> None:
         self.flush()
         self.notes = notes
+        self.shown_anyway.clear()
         self.rebuild()
 
     def flush(self) -> None:
@@ -113,19 +129,24 @@ class NotesPanel(Gtk.Box):
         while child := self.content.get_first_child():
             self.content.remove(child)
         self.dirty = False
+        self.filter_box.set_visible(bool(self.notes and self.notes.entries))
         if not self.notes:
-            self.stack.set_visible_child_name("empty")
+            self._show_empty()
             return
         chapter = object()
         for entry in self.notes.entries:
+            if self.only_notes.get_active() and not entry.has_note and entry.id not in self.shown_anyway:
+                continue
             if entry.chapter != chapter:
                 chapter = entry.chapter
                 if chapter:
                     self.content.append(Gtk.Label(label=chapter, xalign=0, wrap=True, css_classes=["heading"], margin_top=8))
             self._add_card(entry)
         self._add_loose()
-        has_content = self.content.get_first_child() is not None
-        self.stack.set_visible_child_name("list" if has_content else "empty")
+        if self.content.get_first_child() is None:
+            self._show_empty()
+        else:
+            self.stack.set_visible_child_name("list")
         if focused:
             for row in self.rows:
                 if (row.entry_id, row.note_id) == focused[:2]:
@@ -133,16 +154,23 @@ class NotesPanel(Gtk.Box):
                     buffer = row.view.get_buffer()
                     buffer.place_cursor(buffer.get_iter_at_offset(focused[2]))
 
+    def _show_empty(self) -> None:
+        if self.notes and self.notes.entries:
+            self.empty.set_title(_("No Notes Yet"))
+            self.empty.set_description(_("Click a mark in the text to add a note to it."))
+        else:
+            self.empty.set_title(_("No Marks Yet"))
+            self.empty.set_description(_("Choose a color below the text, then click the first and the last word."))
+        self.stack.set_visible_child_name("empty")
+
     def _add_card(self, entry) -> None:
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, css_classes=["card", "note-card"])
+        color = entry.color if entry.color in MARK_COLORS else DEFAULT_MARK_COLOR
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, css_classes=["card", "note-card", f"note-tint-{color}"])
         label = Gtk.Label(
             label=entry.quote or _("Mark without text"), xalign=0, wrap=True, lines=QUOTE_LINES, ellipsize=3,
             css_classes=["note-quote"],
         )
-        head = Gtk.Box(spacing=8)
-        head.append(Gtk.Box(css_classes=["mark-dot", f"mark-{entry.color}"], valign=Gtk.Align.START, margin_top=3))
-        head.append(label)
-        jump = Gtk.Button(child=head, tooltip_text=_("Go to This Place"), css_classes=["flat"])
+        jump = Gtk.Button(child=label, tooltip_text=_("Go to This Place"), css_classes=["flat"])
         jump.connect("clicked", lambda _b, cfi=entry.cfi: self.on_jump(cfi))
         card.append(jump)
         for note in entry.notes:
@@ -183,6 +211,7 @@ class NotesPanel(Gtk.Box):
 
     def show_entry(self, entry_id: str, new_note: bool = False) -> None:
         """Shows a mark in the flyout, with the cursor in a new note if one is wanted."""
+        self.shown_anyway.add(entry_id)
         if self.dirty or entry_id not in self.cards:
             self.rebuild()
         card = self.cards.get(entry_id)
@@ -191,9 +220,7 @@ class NotesPanel(Gtk.Box):
         if new_note:
             self.add_empty_row(entry_id)
         else:
-            mine = [row for row in self.rows if row.entry_id == entry_id]
-            if mine:
-                mine[-1].view.grab_focus()
+            card.get_first_child().grab_focus()  # to read: a note is only for writing once it is clicked
         GLib.idle_add(self._scroll_to, card)
 
     def _scroll_to(self, card):
@@ -226,11 +253,43 @@ class NotesPanel(Gtk.Box):
         if changed and changed.has_note != had_note:
             self.on_mark_changed(changed)
 
+    def ask_remove_row(self, row: _NoteRow) -> None:
+        row.save()
+        if not row.note_id:  # nothing written yet: only the empty field goes
+            self.remove_row(row)
+            return
+        ids = row.entry_id, row.note_id
+        dialog = Adw.AlertDialog(
+            heading=_("Remove Note?"), body=_("You can bring it back with Ctrl+Z as long as the book is open."),
+        )
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("remove", _("Remove"))
+        dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+
+        def respond(_dialog, response):
+            self.remove_dialog = None
+            # The list may have been built anew meanwhile, because the file changed elsewhere.
+            current = next((r for r in self.rows if (r.entry_id, r.note_id) == ids), None)
+            if response == "remove" and current:
+                self.remove_row(current)
+        dialog.connect("response", respond)
+        self.remove_dialog = dialog
+        dialog.present(self)
+
     def remove_row(self, row: _NoteRow) -> None:
+        row.save()  # the last word typed comes back too, if this is undone
+        entry = next((e for e in self.notes.entries if e.id == row.entry_id), None) if self.notes else None
+        if entry and row.note_id and entry.note(row.note_id):
+            had_note = entry.has_note
+            try:
+                self.notes.remove_note(entry.id, row.note_id, undoable=True)
+            except NotesError:
+                self.on_save_failed()
+            changed = next((e for e in self.notes.entries if e.id == entry.id), None)
+            if changed and changed.has_note != had_note:
+                self.on_mark_changed(changed)
         row.forget_timer()
-        buffer = row.view.get_buffer()
-        buffer.set_text("")
-        row.forget_timer()
-        self.save_row(row)
         self.rows.remove(row)
         row.get_parent().remove(row)

@@ -9,7 +9,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Adw, Gio, Gtk
+from gi.repository import Adw, Gdk, Gio, Gtk
 
 from .window import EndpaperWindow
 
@@ -53,6 +53,10 @@ class EndpaperApplication(Adw.Application):
 
     def do_startup(self):
         Adw.Application.do_startup(self)
+        # Installed, the icon is in the system's icon folders; started from the source folder, it is here.
+        source_icons = Path(__file__).resolve().parents[2] / "data"
+        if (source_icons / f"{APP_ID}.svg").is_file():
+            Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(str(source_icons))
         for name, callback in (("quit", lambda *_a: self._quit()), ("about", self._show_about)):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", callback)

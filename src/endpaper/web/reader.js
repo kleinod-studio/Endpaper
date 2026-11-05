@@ -13,9 +13,17 @@ const THEMES = {
         bg: '#f5eedc', fg: '#40342a', scheme: 'light', adapt: true, dark: false,
         bgRgb: 'rgb(245, 238, 220)', fgRgb: 'rgb(64, 52, 42)', surfaceRgb: 'rgb(233, 224, 200)',
     },
+    sage: {
+        bg: '#e4ecdf', fg: '#2c3a2e', scheme: 'light', adapt: true, dark: false,
+        bgRgb: 'rgb(228, 236, 223)', fgRgb: 'rgb(44, 58, 46)', surfaceRgb: 'rgb(212, 224, 205)',
+    },
     dark: {
         bg: '#222226', fg: '#e3e3e6', scheme: 'dark', adapt: true, dark: true,
         bgRgb: 'rgb(34, 34, 38)', fgRgb: 'rgb(227, 227, 230)', surfaceRgb: 'rgb(50, 50, 56)',
+    },
+    black: {
+        bg: '#000000', fg: '#d6d6d6', scheme: 'dark', adapt: true, dark: true,
+        bgRgb: 'rgb(0, 0, 0)', fgRgb: 'rgb(214, 214, 214)', surfaceRgb: 'rgb(32, 32, 32)',
     },
 }
 const LINE_HEIGHT = { compact: 1.3, normal: 1.5, relaxed: 1.8 }

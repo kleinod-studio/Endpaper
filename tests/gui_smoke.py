@@ -356,6 +356,10 @@ def scenario(app, window):
     check(colors("banner")["background"] == "rgb(20, 48, 102)" and colors("banner")["color"] == "rgb(255, 255, 255)", "a dark banner with white text stays as it is")
     check(colors("rule")["border"] != "rgb(20, 48, 102)", "a dark rule becomes visible")
     check(colors("pic")["inline"] is None or "filter" not in colors("pic")["inline"], "pictures are left alone")
+    check(colors("picbox")["background"] == "rgb(205, 219, 220)", "a box with a picture behind it keeps its light color")
+    on_picture = [int(v) for v in colors("onpic")["color"][4:-1].split(",")]
+    field = [int(v) for v in colors("picfield")["color"][4:-1].split(",")]
+    check(sum(on_picture) < 200 and sum(field) < 200, f"and its text and fields stay dark ({colors('onpic')['color']}, {colors('picfield')['color']})")
     check(js(reader, 'endpaper.selectionAnchor("inbox")') == anchor, "anchors for notes do not change")
     reader.settings["theme"] = "light"
     reader._apply_settings()
@@ -1246,6 +1250,38 @@ def scenario(app, window):
     spin(0.5)
     images = js(reader, "endpaper.splitImages()")
     check(images["images"] == 30 and images["split"] == 0, f"no picture is cut in two ({images['split']} of {images['images']})")
+
+    print("A picture shown large")
+    def opened_picture():
+        return wait_for(lambda: reader.picture_dialog is not None and reader.picture_dialog.get_mapped(), 5)
+    clicked = js(reader, "endpaper.pictureClick(0)")
+    check(clicked["taken"] and opened_picture(), "a click on a picture shows it large")
+    dialog = reader.picture_dialog
+    picture = dialog.get_child().get_content()
+    check(picture.get_paintable().get_width() > 0, "drawn anew for the app")
+    fills = lambda: max(picture.get_width() / window.get_width(), picture.get_height() / window.get_height())
+    check(wait_for(lambda: fills() > 0.7), f"and large ({fills():.0%} of the window)")
+    if os.environ.get("ENDPAPER_SHOT"):
+        spin(0.5)
+        paintable = Gtk.WidgetPaintable(widget=window)
+        snapshot = Gtk.Snapshot()
+        paintable.snapshot(snapshot, window.get_width(), window.get_height())
+        node = snapshot.to_node()
+        window.get_renderer().render_texture(node, None).save_to_png(os.environ["ENDPAPER_SHOT"])
+    dialog.close()
+    check(wait_for(lambda: not dialog.get_mapped()), "it closes")
+    reader.picture_dialog = None
+    check(clicked["tabbable"], "a picture can be reached with the Tab key")
+    check(js(reader, "endpaper.pictureClick(0, true)")["taken"] and opened_picture(), "and opened with Enter")
+    reader.picture_dialog.close()
+    spin(0.5)
+    reader.picture_dialog = None
+    reader.toggle_marking()
+    spin(0.3)
+    js(reader, "endpaper.pictureClick(0)")
+    spin(1)
+    check(reader.picture_dialog is None, "in marking mode a click on a picture opens nothing")
+    reader.toggle_marking()
     window.navigation.pop()
     wait_for(lambda: not reader.opened)
 

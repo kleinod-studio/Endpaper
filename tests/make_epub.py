@@ -74,6 +74,7 @@ def make_styled_epub(path: Path):
     html body p#banner { background-color: #143066 !important; color: #ffffff !important; }
     html body a#link { color: #2a4a8f !important; }
     html body div#rule { border-left: 3px solid #143066 !important; }
+    html body div#picbox { background-color: #cddbdc !important; }
     """
     body = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
@@ -82,6 +83,9 @@ def make_styled_epub(path: Path):
         '<h1 id="head">A dark heading</h1><p id="gray">Gray text that fades on a dark page.</p>'
         '<div id="box"><p id="inbox">Text in a light box.</p></div><p id="banner">White on a dark banner</p>'
         '<p><a id="link" href="ch2.xhtml">A link</a></p><div id="rule">Beside a rule</div>'
+        '<div id="picbox" style="background-image: url(\'cover.png\'); background-position: bottom;'
+        ' background-repeat: no-repeat"><p id="onpic">Text above a picture, on the light color the book gives for it.</p>'
+        '<textarea id="picfield"></textarea></div>'
         '<img id="pic" src="cover.png" alt=""/></body></html>'
     )
     make_epub(path, title="Styled", identifier="urn:styled", chapters=2, paragraphs=3)

@@ -153,6 +153,7 @@ export const createBookmarks = (view, post) => {
         setPlacing(on) {
             placing = on
         },
+        get placing() { return placing },
         setAll(next) {
             list = next
             drawAll()

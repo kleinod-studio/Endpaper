@@ -6,6 +6,7 @@ import { createMarks } from './marks.js'
 import { createBookmarks } from './bookmarks.js'
 import { createPeek } from './peek.js'
 import { createFields } from './fields.js'
+import { createPictures } from './pictures.js'
 
 const post = (type, data = {}) =>
     window.webkit.messageHandlers.endpaper.postMessage(JSON.stringify({ type, ...data }))
@@ -45,6 +46,7 @@ let marks = null
 let peek = null
 let fields = null
 let bookmarks = null
+let pictures = null
 let settings = null
 const blocked = []
 
@@ -184,6 +186,7 @@ window.endpaper = {
             marks = createMarks(view, post)
             fields = createFields(view, post)
             bookmarks = createBookmarks(view, post)
+            pictures = createPictures(view, post, { isBusy: () => marks.marking || bookmarks.placing })
             peek = createPeek(view, {
                 theme: () => THEMES[settings.theme],
                 isMarking: () => marks.marking,
@@ -204,6 +207,7 @@ window.endpaper = {
                 marks.attach(doc)
                 peek.attach(doc, index)
                 fields.attach(doc, index)
+                pictures.attach(doc)
                 adaptColors(doc)
             })
             view.addEventListener('external-link', e => {
@@ -362,6 +366,16 @@ window.endpaper = {
         const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
         target.dispatchEvent(event)
         return event.defaultPrevented
+    },
+    // A click on the book's nth picture, or Enter on it. True if the app took it for itself.
+    pictureClick(n, key = false) {
+        const doc = view.renderer.getContents()[0].doc
+        const target = doc.querySelectorAll('img, image')[n]
+        const event = key
+            ? new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+            : new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })
+        target.dispatchEvent(event)
+        return { taken: event.defaultPrevented, tabbable: target.tabIndex === 0 }
     },
     fieldFocus(selector, on) {
         const element = view.renderer.getContents()[0].doc.querySelector(selector)

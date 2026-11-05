@@ -146,11 +146,22 @@ export const adapt = (doc, theme) => {
     }
 
     // First read everything, then write: reading after writing would recalculate styles every time.
-    const visit = (element, background) => {
+    // A box with a picture behind it keeps the colors of the book, because the picture stays as it is. Its text is
+    // read against the color the book gives for where the picture does not reach, which matches the picture.
+    const visit = (element, background, onPicture) => {
         if (SKIP.has(element.tagName.toUpperCase())) return // in a book's XHTML, names are in lower case
         const style = view.getComputedStyle(element)
         let here = background
-        if (style.backgroundImage === 'none') {
+        if (style.backgroundImage !== 'none') {
+            const color = parseColor(style.backgroundColor)
+            if (color && color.a >= 0.5) {
+                here = over(color, background)
+                onPicture = true
+            }
+        } else if (onPicture) {
+            const color = parseColor(style.backgroundColor)
+            if (color && color.a >= 0.05) here = over(color, background)
+        } else {
             const color = parseColor(style.backgroundColor)
             if (color) {
                 const mapped = remembered(`b${style.backgroundColor}`, () => adaptBackground(color, theme))
@@ -178,9 +189,9 @@ export const adapt = (doc, theme) => {
                     `s${value}|${toHex(here)}`, () => liftTo(solid, here, BORDER_CONTRAST)))])
             }
         }
-        for (const child of element.children) visit(child, here)
+        for (const child of element.children) visit(child, here, onPicture)
     }
-    for (const child of doc.body.children) visit(child, theme.bgColor)
+    for (const child of doc.body.children) visit(child, theme.bgColor, false)
 
     const list = []
     for (const [element, property, value] of changes) write(list, element, property, value)
@@ -197,7 +208,7 @@ export const audit = (doc, pageBackground) => {
         const style = view.getComputedStyle(element)
         let here = background
         const color = parseColor(style.backgroundColor)
-        if (color && color.a >= 0.05 && style.backgroundImage === 'none') here = over(color, background)
+        if (color && color.a >= (style.backgroundImage === 'none' ? 0.05 : 0.5)) here = over(color, background)
         const hasText = [...element.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim())
         const text = parseColor(style.color)
         if (hasText && text && style.display !== 'none' && style.visibility !== 'hidden') {

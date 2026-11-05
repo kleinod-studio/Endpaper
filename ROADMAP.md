@@ -36,6 +36,7 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 - [x] Previews of footnotes and references in a small popup
 - [x] Answer fields in study editions, saved in the notes file
 - [x] Bookmarks on paragraphs, with a list in the flyout beside the notes
+- [x] Pictures shown large after a click, or Enter
 
 ## Phase 3: Search
 

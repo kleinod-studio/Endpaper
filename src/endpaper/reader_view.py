@@ -1,5 +1,6 @@
 """The page for reading a book: a web view showing the book, and the table of contents beside it."""
 
+import base64
 import json
 import posixpath
 import re
@@ -161,6 +162,7 @@ class ReaderPage(Adw.NavigationPage):
         self._save_timer = 0
         self._last_toc_href = None
         self.on_opened = None  # for tests
+        self.picture_dialog = None
         self._build()
         Adw.StyleManager.get_default().connect("notify::dark", lambda *_a: self._apply_settings(save=False))
 
@@ -1027,6 +1029,38 @@ class ReaderPage(Adw.NavigationPage):
         if self.book_path:
             self.on_error(_("The book could not be shown any further."))
 
+    # --- Pictures ---------------------------------------------------------------------------
+
+    PICTURE_SHARE = 0.9  # of the window, at most
+
+    def _show_picture(self, data_url: str, description: str):
+        """The web process has drawn the picture anew as a PNG; only that is decoded here."""
+        try:
+            head, _comma, encoded = data_url.partition(",")
+            if head != "data:image/png;base64":
+                raise ValueError(head)
+            texture = Gdk.Texture.new_from_bytes(GLib.Bytes.new(base64.b64decode(encoded, validate=True)))
+        except (GLib.Error, ValueError):
+            self.show_message(_("This picture cannot be shown."))
+            return
+        picture = Gtk.Picture(
+            paintable=texture, content_fit=Gtk.ContentFit.CONTAIN, can_shrink=True,
+            alternative_text=description or None,
+        )
+        content = Adw.ToolbarView(content=picture)
+        content.add_top_bar(Adw.HeaderBar())
+        dialog = Adw.Dialog(title=description or _("Picture"), child=content)
+        # As large as fits, also for a small picture: that is what it was opened for.
+        root = self.get_root()
+        header = 47
+        room_width = root.get_width() * self.PICTURE_SHARE
+        room_height = root.get_height() * self.PICTURE_SHARE - header
+        scale = min(room_width / texture.get_width(), room_height / texture.get_height())
+        dialog.set_content_width(max(360, round(texture.get_width() * scale)))
+        dialog.set_content_height(max(240, round(texture.get_height() * scale) + header))
+        dialog.present(self)
+        self.picture_dialog = dialog
+
     def _on_overlay_event(self, controller, _event):
         event = controller.get_current_event()  # PyGObject hands over nothing as the signal's own argument
         if event is None or event.get_event_type() != Gdk.EventType.SCROLL:
@@ -1100,6 +1134,10 @@ class ReaderPage(Adw.NavigationPage):
             self._in_field = message["active"]
         elif kind == "answers-missing":
             self.notes_panel.set_missing_answers(message["fields"])
+        elif kind == "picture":
+            self._show_picture(message["data"], message.get("description", ""))
+        elif kind == "picture-failed":
+            self.show_message(_("This picture cannot be shown."))
         elif kind == "external-link":
             href = message["href"]
             if href.startswith(OPENABLE_LINKS):

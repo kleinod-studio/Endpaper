@@ -12,6 +12,7 @@ const MIN_SIDE_WIDTH = 240
 const ARROWS = 52 // room for the page buttons at the window's sides, which lie above the web view
 const ARROWS_FROM_WIDTH = 560
 const MAX_CHARS = 1500
+const MAX_EXCERPT_CHARS = 6000 // a whole excerpt from another publication, and worth reading right here
 const MAX_SHORT_LINK = 4 // characters of a link that is a footnote mark, like "1" or "[12]"
 const MAX_NOTE_LENGTH = 3000
 const FOLLOWING_BLOCKS = 4 // a text cut up by anchors, like verses, may run over a few paragraphs
@@ -108,7 +109,7 @@ const buildFrom = (source, out, state) => {
         }
         if (node.nodeType !== Node.ELEMENT_NODE) continue
         const name = node.localName.toLowerCase()
-        if (LEFT_OUT.has(name) || isNoteLink(node)) continue
+        if (LEFT_OUT.has(name) || isNoteLink(node) || node.hasAttribute(HIDDEN)) continue
         if (name === 'br') {
             out.append(document.createElement('br'))
         } else if (INLINE[name]) {
@@ -126,12 +127,41 @@ const buildFrom = (source, out, state) => {
     }
 }
 
+// An excerpt from another publication: the anchor sits in a title line that links back, and the excerpt is what
+// surrounds that line. Such a title is often framed with marks, like ***Title***.
+const excerptAround = target => {
+    if (hasText(target)) return null
+    const link = target.closest('a[href]')
+    const line = link?.closest(BLOCKS)
+    const whole = line?.parentElement
+    if (!whole || whole.localName === 'body' || line.textContent.trim() !== link.textContent.trim()) return null
+    return whole.textContent.trim().length > line.textContent.trim().length ? { whole, line } : null
+}
+
+const contentOfExcerpt = ({ whole, line }, out, state) => {
+    const title = document.createElement('p')
+    title.className = 'heading'
+    title.textContent = line.textContent.replace(/^[^\p{L}\p{N}]+|[*\s]+$/gu, '')
+    out.append(title)
+    const marked = 'data-endpaper-title'
+    line.setAttribute(marked, '')
+    const rest = whole.cloneNode(true)
+    line.removeAttribute(marked)
+    rest.querySelector(`[${marked}]`)?.remove()
+    buildFrom(rest, out, state)
+}
+
 const contentOf = target => {
     const out = document.createDocumentFragment()
-    const state = { left: MAX_CHARS, cut: false }
-    if (hasText(target)) {
+    const excerpt = excerptAround(target)
+    const state = { left: excerpt ? MAX_EXCERPT_CHARS : MAX_CHARS, cut: false }
+    if (excerpt) {
+        contentOfExcerpt(excerpt, out, state)
+    } else if (hasText(target)) {
         const holder = target.ownerDocument.createElement('div')
-        holder.append(target.cloneNode(true))
+        const copy = target.cloneNode(true)
+        copy.removeAttribute(HIDDEN) // the note itself is what is wanted here
+        holder.append(copy)
         if (/^h[1-6]$/i.test(target.localName) && target.nextElementSibling)
             holder.append(target.nextElementSibling.cloneNode(true))
         buildFrom(holder, out, state)
@@ -291,19 +321,32 @@ export const createPeek = (view, { theme, isMarking, label }) => {
         if (detail.cfi !== location) hide()
         location = detail.cfi
     })
+    // What stands outside the reading order, or an excerpt, is read right here. A place in the text is gone to.
+    const staysHere = async (a, place_) => {
+        if (isNoteLink(a) || lastPointer === 'touch' || view.book.sections[place_.index]?.linear === 'no') return true
+        try {
+            const found = findTarget(await sectionDocument(place_.index), place_.id)
+            return Boolean(found && excerptAround(found))
+        } catch {
+            return false
+        }
+    }
+
     view.addEventListener('link', e => {
         if (isMarking()) return
-        const { a } = e.detail
+        const { a, href } = e.detail
         const index = view.renderer.getContents().find(content => content.doc === a.ownerDocument)?.index
-        if (isNoteLink(a) || lastPointer === 'touch') {
-            // Without anything to show, the link does what links do.
-            if (resolve(a, index)) e.preventDefault()
-            show(a, index, true).then(shown => {
-                if (!shown) view.goTo(e.detail.href)
-            })
+        const place_ = resolve(a, index)
+        if (!place_) {
+            hide()
             return
         }
-        hide()
+        e.preventDefault()
+        staysHere(a, place_).then(async stay => {
+            if (stay && await show(a, index, true)) return
+            hide() // without anything to show, the link does what links do
+            view.goTo(href)
+        })
     })
 
     return {

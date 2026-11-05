@@ -723,6 +723,92 @@ class AnswersTest(unittest.TestCase):
         self.assertEqual({a.field: a.text for a in self.open().answers}, {"first": "safe", self.KEY: "Waiting"})
 
 
+class BookmarksTest(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.book = Path(self.folder.name) / "book.epub"
+        self.book.write_bytes(b"not touched")
+        self.path = self.book.with_name("book.notes.md")
+
+    def open(self):
+        return NotesFile(self.book, "A Book")
+
+    def test_a_bookmark_is_readable_and_comes_back(self):
+        file = self.open()
+        bookmark = file.add_bookmark(CFI, "The paragraph begins", "Chapter 1")
+        text = self.path.read_text(encoding="utf-8")
+        self.assertIn("> The paragraph begins", text)
+        self.assertIn("## Chapter 1", text)
+        again = self.open().bookmarks[0]
+        self.assertEqual((again.id, again.cfi, again.quote, again.chapter), (bookmark.id, CFI, "The paragraph begins", "Chapter 1"))
+        self.assertEqual(serialize(parse(text)), text)
+        self.assertEqual(self.book.read_bytes(), b"not touched")
+
+    def test_bookmarks_marks_and_answers_live_side_by_side(self):
+        file = self.open()
+        file.add("c1", "Quote", "Note", "Chapter 1")
+        file.add_bookmark("c2", "Mark me", "Chapter 1")
+        file.set_answer("a.xhtml#q", "Answer", "Question?", "Chapter 1")
+        again = self.open()
+        self.assertEqual((len(again.entries), len(again.bookmarks), len(again.answers), again.loose), (1, 1, 1, []))
+        self.assertEqual(again.entries[0].quote, "Quote")
+        self.assertEqual(again.bookmarks[0].quote, "Mark me")
+        self.assertEqual(again.answers[0].question, "Question?")
+
+    def test_one_place_has_one_bookmark(self):
+        file = self.open()
+        first = file.add_bookmark(CFI, "Quote")
+        self.assertEqual(file.add_bookmark(CFI, "Quote").id, first.id)
+        self.assertEqual(len(self.open().bookmarks), 1)
+
+    def test_undo_and_redo(self):
+        file = self.open()
+        bookmark = file.add_bookmark(CFI, "Quote")
+        file.undo()
+        self.assertEqual(self.open().bookmarks, [])
+        file.redo()
+        self.assertEqual(self.open().bookmarks[0].id, bookmark.id)
+        file.remove_bookmark(bookmark.id)
+        self.assertEqual(self.open().bookmarks, [])
+        file.undo()
+        self.assertEqual(self.open().bookmarks[0].id, bookmark.id)
+
+    def test_undo_skips_a_bookmark_gone_elsewhere(self):
+        file = self.open()
+        file.add("c1", "Mark")
+        file.add_bookmark("c2", "Gone")
+        text = self.path.read_text(encoding="utf-8")
+        start = text.index("> Gone")
+        self.path.write_text(text[:start], encoding="utf-8")
+        file.refresh()
+        self.assertTrue(file.undo(), "on to the step before")
+        self.assertEqual(self.open().entries, [])
+
+    def test_a_bookmark_added_elsewhere_arrives_and_stays(self):
+        file = self.open()
+        file.add("c1", "Mark")
+        with self.path.open("a", encoding="utf-8") as out:
+            out.write("\n> By hand\n\n<!-- endpaper-bookmark id=abc123 cfi=c9 -->\n")
+        self.assertTrue(file.refresh())
+        self.assertEqual(file.bookmarks[0].quote, "By hand")
+        file.add("c2", "Another")
+        self.assertIn("id=abc123", self.path.read_text(encoding="utf-8"))
+
+    def test_a_broken_bookmark_stays_as_text(self):
+        self.path.write_text("<!-- endpaper-bookmark nothing useful -->\n", encoding="utf-8")
+        file = self.open()
+        self.assertEqual(file.bookmarks, [])
+        self.assertIn("nothing useful", file.loose[0])
+
+    def test_a_second_bookmark_with_the_same_id_stays_as_text(self):
+        line = "<!-- endpaper-bookmark id=abc cfi=c{} -->"
+        self.path.write_text(line.format(1) + "\n\n" + line.format(2) + "\n", encoding="utf-8")
+        file = self.open()
+        self.assertEqual([b.cfi for b in file.bookmarks], ["c1"])
+        self.assertIn("cfi=c2", file.loose[0])
+
+
 class MarkdownStyleTest(unittest.TestCase):
     def test_an_image_in_a_note_is_recognized(self):
         spans = markdown_style.line_spans("![A caption](picture.png) and text", False)

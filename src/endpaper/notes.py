@@ -26,6 +26,12 @@ Answers typed into a book's own fields stand in the chapter they belong to, as p
     The answer.
     <!-- endpaper-answer-end -->
 
+Bookmarks stand there too, with the beginning of their paragraph:
+
+    > The paragraph begins like this
+
+    <!-- endpaper-bookmark id=a1b2c3d4 cfi=epubcfi(/6/4!/4/2) -->
+
 Older files have the text of a single note directly between the quote and the anchor. They stay
 readable, and a mark takes the current form when the file is saved.
 """
@@ -47,6 +53,7 @@ HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
 VALID_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 NOTE_OPEN = re.compile(r"^<!--\s*endpaper-note\b(?!-)(.*?)-->\s*$")
 NOTE_END = re.compile(r"^<!--\s*endpaper-note-end\s*-->\s*$")
+BOOKMARK = re.compile(r"^<!--\s*endpaper-bookmark\s+(.*?)\s*-->\s*$")
 ANSWER_OPEN = re.compile(r"^<!--\s*endpaper-answer\b(?!-)(.*?)-->\s*$")
 ANSWER_END = re.compile(r"^<!--\s*endpaper-answer-end\s*-->\s*$")
 FIELD_SAFE = "/#~.-_"
@@ -120,6 +127,15 @@ class Answer:
     question: str = ""
     chapter: str | None = None
     kind: str = "text"  # "check": a tick box, with the text [x]
+    extra: dict[str, str] = field(default_factory=dict)  # settings of a newer version must survive
+
+
+@dataclass
+class Bookmark:
+    id: str
+    cfi: str
+    quote: str = ""
+    chapter: str | None = None
     extra: dict[str, str] = field(default_factory=dict)  # settings of a newer version must survive
 
 
@@ -241,6 +257,16 @@ def parse(text: str) -> list:
     answer_lines, answer_attributes, answer_open, attributes_of_answer = [], None, "", {}
     seen_fields = set()
 
+    def take_question() -> str:
+        while pending and not pending[-1].strip():
+            pending.pop()
+        start = len(pending)
+        while start and pending[start - 1].startswith(">"):
+            start -= 1
+        question = [re.sub(r"^> ?", "", quoted) for quoted in pending[start:]]
+        del pending[start:]
+        return "\n".join(question)
+
     def flush():
         lines = _trimmed(pending)
         if lines:
@@ -257,16 +283,10 @@ def parse(text: str) -> list:
             pending.extend(raw)  # also a second answer for the same field: it stays as it is
             return
         seen_fields.add(key)
-        while pending and not pending[-1].strip():
-            pending.pop()
-        start = len(pending)
-        while start and pending[start - 1].startswith(">"):
-            start -= 1
-        question = [re.sub(r"^> ?", "", quoted) for quoted in pending[start:]]
-        del pending[start:]
+        question = take_question()
         flush()
         blocks.append(Answer(
-            key, "\n".join(IN_NOTE_ESCAPED.sub(r"\1", body) for body in _trimmed(lines)), "\n".join(question), chapter,
+            key, "\n".join(IN_NOTE_ESCAPED.sub(r"\1", body) for body in _trimmed(lines)), question, chapter,
             attributes_of_answer.get("kind", "text"),
             {k: unquote(v) for k, v in attributes_of_answer.items() if k not in ("field", "kind")},
         ))
@@ -276,7 +296,7 @@ def parse(text: str) -> list:
             if ANSWER_END.match(line):
                 finish_answer(True)
                 continue
-            if not (ANCHOR.match(line) or ANSWER_OPEN.match(line)):
+            if not (ANCHOR.match(line) or ANSWER_OPEN.match(line) or BOOKMARK.match(line)):
                 answer_lines.append(line)
                 continue
             finish_answer(False)  # its end marker went missing
@@ -284,6 +304,14 @@ def parse(text: str) -> list:
             attributes_of_answer = _read_attributes(opening[1])
             answer_attributes, answer_open = attributes_of_answer or {"": ""}, line
             continue
+        if not in_note and (mark := BOOKMARK.match(line)):
+            found = {key: unquote(value) for key, value in _read_attributes(mark[1]).items()}
+            if "cfi" in found and VALID_ID.match(found.get("id", "")) and found["id"] not in seen:
+                seen.add(found["id"])
+                quote = take_question()
+                flush()
+                blocks.append(Bookmark(found["id"], found["cfi"], quote, chapter, {k: v for k, v in found.items() if k not in ("id", "cfi")}))
+                continue
         attributes = _read_anchor(line)
         if in_note:  # a heading in a note is Markdown of the note. An anchor means its end marker went missing.
             in_note = not (NOTE_END.match(line) or attributes)
@@ -340,6 +368,16 @@ def _write_answer(answer: Answer) -> str:
     return "\n\n".join(parts)
 
 
+def _write_bookmark(bookmark: Bookmark) -> str:
+    attributes = {"id": bookmark.id, "cfi": url_quote(bookmark.cfi, safe=CFI_SAFE)}
+    attributes.update((key, url_quote(value, safe=CFI_SAFE)) for key, value in bookmark.extra.items())
+    anchor = "<!-- endpaper-bookmark " + " ".join(f"{k}={v}" for k, v in attributes.items()) + " -->"
+    if not bookmark.quote:
+        return anchor
+    quote = "\n".join(f"> {line}".rstrip() for line in bookmark.quote.splitlines())
+    return f"{quote}\n\n{anchor}"
+
+
 def serialize(blocks: list) -> str:
     parts = []
     for block in blocks:
@@ -349,6 +387,8 @@ def serialize(blocks: list) -> str:
             parts.append(block.text)
         elif isinstance(block, Answer):
             parts.append(_write_answer(block))
+        elif isinstance(block, Bookmark):
+            parts.append(_write_bookmark(block))
         else:
             parts.append(_write_entry(block))
     return "\n\n".join(parts) + "\n" if parts else ""
@@ -393,6 +433,21 @@ def _apply_answer(blocks: list, answer: Answer, old_text: str) -> None:
         current.text = answer.text  # a tick holds nothing that could get lost
     else:  # both versions stay
         current.text += CONFLICT_RULE + answer.text
+
+
+def _bookmarks(blocks: list) -> list[Bookmark]:
+    return [b for b in blocks if isinstance(b, Bookmark)]
+
+
+def _apply_add_bookmark(blocks: list, bookmark: Bookmark) -> None:
+    if not any(b.cfi == bookmark.cfi for b in _bookmarks(blocks)):
+        _insert(blocks, bookmark)
+
+
+def _apply_remove_bookmark(blocks: list, bookmark_id: str) -> None:
+    for bookmark in _bookmarks(blocks):
+        if bookmark.id == bookmark_id:
+            blocks.remove(bookmark)
 
 
 def _apply_add(blocks: list, entry: Entry) -> None:
@@ -626,6 +681,39 @@ class NotesFile:
             return
         chapter = " ".join(chapter.split()) or None if chapter else None
         self._change(_apply_answer, Answer(key, text, " ".join(question.split()), chapter, kind), old_text)
+
+    @property
+    def bookmarks(self) -> list[Bookmark]:
+        return _bookmarks(self.blocks)
+
+    def _bookmark(self, bookmark_id: str) -> Bookmark:
+        for bookmark in self.bookmarks:
+            if bookmark.id == bookmark_id:
+                return bookmark
+        raise KeyError(bookmark_id)
+
+    def add_bookmark(self, cfi: str, quote: str = "", chapter: str | None = None) -> Bookmark:
+        existing = next((b for b in self.bookmarks if b.cfi == cfi), None)
+        if existing:
+            return existing
+        chapter = " ".join(chapter.split()) or None if chapter else None
+        taken = {e.id for e in self.entries} | {b.id for b in self.bookmarks}
+        bookmark = Bookmark(_new_id(taken), cfi, " ".join(quote.split()), chapter)
+        self._record(lambda: self._drop_bookmark(bookmark.id), lambda: self._put_bookmark(bookmark))
+        self._put_bookmark(bookmark)
+        return bookmark
+
+    def remove_bookmark(self, bookmark_id: str) -> None:
+        saved = copy.deepcopy(self._bookmark(bookmark_id))
+        self._record(lambda: self._put_bookmark(saved), lambda: self._drop_bookmark(bookmark_id))
+        self._drop_bookmark(bookmark_id)
+
+    def _put_bookmark(self, bookmark: Bookmark) -> None:
+        self._change(_apply_add_bookmark, copy.deepcopy(bookmark))
+
+    def _drop_bookmark(self, bookmark_id: str) -> None:
+        self._bookmark(bookmark_id)  # gone elsewhere meanwhile: undo goes on with the step before
+        self._change(_apply_remove_bookmark, bookmark_id)
 
     def refresh(self) -> bool:
         """Takes over what other programs changed. True if anything did."""

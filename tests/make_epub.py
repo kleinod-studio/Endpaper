@@ -130,7 +130,8 @@ def make_notes_epub(path: Path):
         '<a href="#target-para">same-chapter</a> and <a href="two.xhtml#verse2">verse-link</a> and '
         '<a href="two.xhtml#long-para">long-link</a> and <a href="two.xhtml#head">heading-link</a> and '
         '<a href="two.xhtml">chapter-link</a> and <a epub:type="noteref" href="#missing">nothing-mark</a> and '
-        '<a href="https://example.org/x">web-link</a>.</p>'
+        '<a href="https://example.org/x">web-link</a> and <a href="excerpt.xhtml#pc1"><strong>excerpt-link</strong></a> and '
+        '<a href="excerpt.xhtml#pc2">second-excerpt</a>.</p>'
         f'{filler}<p id="target-para">A paragraph of its own, <em>worth</em> looking at.</p>'
         '<aside epub:type="footnote" id="aside1"><div epub:type="footnote" id="note1"><p><a href="#src1">*</a> '
         'The <strong>text</strong> of the first footnote.</p></div></aside>'
@@ -152,6 +153,16 @@ def make_notes_epub(path: Path):
         f'<p id="long-para">{"A very long paragraph. " * 200}</p>'
         '</body></html>'
     )
+    excerpt = (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en"><head><title>Excerpts</title></head><body>'
+        '<div class="group"><div class="ext"><p><a href="one.xhtml#para">^ <span id="pc1"></span><strong>***First Source p. 3***</strong></a></p>'
+        '<header><h1>Heading of the first excerpt</h1></header><p>Body of the first excerpt'
+        '<span id="srcx"></span><a epub:type="noteref" href="#notex">*</a> goes on.</p>'
+        '<aside epub:type="footnote"><div id="notex"><p>A footnote inside the excerpt.</p></div></aside></div>'
+        '<div class="ext"><p><a href="one.xhtml#para">^ <span id="pc2"></span><strong>***Second Source***</strong></a></p>'
+        '<p>Body of the second excerpt.</p></div></div></body></html>'
+    )
     items, spine = [], []
     with zipfile.ZipFile(path, "w") as z:
         z.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
@@ -160,7 +171,7 @@ def make_notes_epub(path: Path):
             '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
             '<rootfiles><rootfile full-path="OEBPS/p.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
         )
-        for name, text in (("one", one), ("two", two)):
+        for name, text in (("one", one), ("two", two), ("excerpt", excerpt)):
             z.writestr(f"OEBPS/{name}.xhtml", text)
             items.append(f'<item id="{name}" href="{name}.xhtml" media-type="application/xhtml+xml"/>')
             spine.append(f'<itemref idref="{name}"/>')

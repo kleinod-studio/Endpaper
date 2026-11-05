@@ -14,7 +14,7 @@ const hits = (range, x, y) => [...range.getClientRects()].some(rect =>
     && y >= rect.top - POINT_TOLERANCE && y <= rect.bottom + POINT_TOLERANCE)
 
 // The word under the pointer, or null in the margin or on a picture. On punctuation, the word before it.
-const wordAt = (doc, x, y) => {
+export const wordAt = (doc, x, y) => {
     const caret = doc.caretRangeFromPoint(x, y)
     const node = caret?.startContainer
     if (node?.nodeType !== Node.TEXT_NODE) return null
@@ -36,7 +36,7 @@ const wordAt = (doc, x, y) => {
 
 const wordsIn = new WeakMap()
 
-const wordsOf = node => {
+export const wordsOf = node => {
     if (!wordsIn.has(node)) {
         const segmenter = new Intl.Segmenter(node.ownerDocument.documentElement.lang || undefined, { granularity: 'word' })
         wordsIn.set(node, [...segmenter.segment(node.data)].filter(s => s.isWordLike)
@@ -45,7 +45,7 @@ const wordsOf = node => {
     return wordsIn.get(node)
 }
 
-const shown = node => {
+export const shown = node => {
     const parent = node.parentElement
     if (!parent?.getClientRects().length) return false
     const folded = parent.closest('details:not([open])')
@@ -58,7 +58,7 @@ const walkerAt = (doc, node) => {
     return walker
 }
 
-const rangeIn = (node, [start, end]) => {
+export const rangeIn = (node, [start, end]) => {
     const range = node.ownerDocument.createRange()
     range.setStart(node, start)
     range.setEnd(node, end)
@@ -80,9 +80,9 @@ const neighbor = (word, forward) => {
     return null
 }
 
-const firstRect = range => range.getClientRects()[0]
+export const firstRect = range => range.getClientRects()[0]
 
-const onScreen = range => {
+export const onScreen = range => {
     const rect = firstRect(range)
     const frame = range.startContainer.ownerDocument.defaultView.frameElement?.getBoundingClientRect()
     if (!rect || !frame) return false
@@ -91,7 +91,7 @@ const onScreen = range => {
     return x >= 0 && x <= window.innerWidth && y >= 0 && y <= window.innerHeight
 }
 
-const firstOnScreen = doc => {
+export const firstOnScreen = doc => {
     const walker = walkerAt(doc)
     while (walker.nextNode()) {
         if (!shown(walker.currentNode)) continue
@@ -145,7 +145,7 @@ const NOTE_MIN_GAP = 4
 const NOTE_EDGE = 2 // in a narrow window the sign moves closer to the text, but stays on the page
 const NOTE_REACH = 3 // a little more room around it for the click
 
-const svgElement = (tag, attributes) => {
+export const svgElement = (tag, attributes) => {
     const element = document.createElementNS(SVG, tag)
     for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, value)
     return element
@@ -174,7 +174,7 @@ const noteSign = ({ x, y, size }, color) => svgElement('rect', {
     class: 'endpaper-note', x, y, width: size, height: size, rx: 2, fill: color,
 })
 
-const quoteOf = range => range.toString().replace(/­/g, '').replace(/\s+/g, ' ').trim()
+export const quoteOf = range => range.toString().replace(/­/g, '').replace(/\s+/g, ' ').trim()
 
 export const createMarks = (view, post) => {
     const marks = new Map() // by CFI: { cfi, hex, style, hasNote }
@@ -367,6 +367,7 @@ export const createMarks = (view, post) => {
     return {
         // Called for every section that loads. Capturing keeps links and the like from reacting in marking mode.
         attach(doc) {
+            for (const [cfi, sign] of signs) if (!sign.doc.defaultView) signs.delete(cfi) // the chapter was left
             doc.addEventListener('mousedown', e => {
                 if (marking) e.preventDefault() // no selection by a double click
             }, true)

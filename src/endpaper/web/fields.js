@@ -57,7 +57,7 @@ export const createFields = (view, post) => {
     let answers = {}
     let checked = false
     let followTimer = 0
-    const loaded = new Map() // the open documents and their fields, to bring changes from the file to them
+    const fieldsIn = new WeakMap() // must not keep a chapter in memory after the reader has left it
 
     const show = ({ element, key }) => {
         if (key in answers) {
@@ -119,7 +119,7 @@ export const createFields = (view, post) => {
         attach(doc, index) {
             const section = view.book.sections[index]?.id ?? String(index)
             const items = fieldsOf(doc, section)
-            loaded.set(doc, items)
+            fieldsIn.set(doc, items)
             for (const item of items) {
                 show(item)
                 item.element.addEventListener(isCheck(item.element) ? 'change' : 'input', () => {
@@ -142,10 +142,7 @@ export const createFields = (view, post) => {
         },
         setAnswers(next) {
             answers = next
-            for (const [doc, items] of loaded) {
-                if (doc.defaultView) items.forEach(show)
-                else loaded.delete(doc)
-            }
+            for (const { doc } of view.renderer.getContents()) fieldsIn.get(doc)?.forEach(show)
             if (!checked || Object.keys(answers).length) {
                 checked = true
                 findMissing()

@@ -2,7 +2,9 @@
 
 import json
 import posixpath
+import re
 import time
+from collections import deque
 from gettext import gettext as _, ngettext
 from pathlib import Path
 
@@ -98,6 +100,9 @@ def _install_css() -> None:
             box-shadow: inset 0 0 0 1px alpha(gray, 0.5);
         }
         button.theme-choice:checked { box-shadow: 0 0 0 2px var(--popover-bg-color), 0 0 0 4px var(--accent-bg-color); }
+        .bookmark-list { background: none; }
+        .bookmark-row { padding: 12px 8px 12px 14px; margin-bottom: 8px; }
+        .bookmark-chapter { margin: 10px 0 8px; }
         .note-card { padding: 6px; }
         .note-card > button { font-weight: normal; padding: 6px; }
         .note-loose { padding: 10px; }
@@ -114,7 +119,15 @@ def _install_css() -> None:
 
 
 def _web_context() -> WebKit.WebContext:
-    context = WebKit.WebContext()
+    # WebKit holds on to what it could free until it feels pressure: by default above 1 to 1.5 GB,
+    # checked every 30 seconds. Paging through a long book with pictures gets there fast and,
+    # together with other programs, fills a machine with little memory until it stalls.
+    pressure = WebKit.MemoryPressureSettings.new()
+    pressure.set_memory_limit(1000)
+    pressure.set_strict_threshold(0.75)  # before the conservative one, which WebKit wants to stay below it
+    pressure.set_conservative_threshold(0.5)
+    pressure.set_poll_interval(2)
+    context = WebKit.WebContext(memory_pressure_settings=pressure)
     security = context.get_security_manager()
     security.register_uri_scheme_as_secure("endpaper")
     security.register_uri_scheme_as_cors_enabled("endpaper")
@@ -170,6 +183,21 @@ class ReaderPage(Adw.NavigationPage):
         self.notes_button.update_property([Gtk.AccessibleProperty.LABEL], [_("Notes")])
         header.pack_end(self.notes_button)
 
+        self.bookmark_list = Gtk.ListBox(
+            selection_mode=Gtk.SelectionMode.NONE, css_classes=["bookmark-list"], margin_top=12, margin_bottom=12, margin_start=12, margin_end=12,
+        )
+        self.bookmark_list.set_header_func(self._bookmark_header)
+        self.bookmark_list.connect("row-activated", self._on_bookmark_row)
+        self.bookmark_list.update_property([Gtk.AccessibleProperty.LABEL], [_("Bookmarks")])
+        self.bookmark_empty = Adw.StatusPage(
+            icon_name="user-bookmarks-symbolic", title=_("No Bookmarks Yet"), css_classes=["compact"],
+            description=_("Press Ctrl+D or use the button below the text."),
+        )
+        self.bookmark_pages = Gtk.Stack()
+        self.bookmark_pages.add_named(Gtk.ScrolledWindow(child=self.bookmark_list, hscrollbar_policy=Gtk.PolicyType.NEVER), "list")
+        self.bookmark_pages.add_named(self.bookmark_empty, "empty")
+        self.bookmark_pages.set_visible_child_name("empty")
+
         self.toc_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.toc_list.add_css_class("navigation-sidebar")
         self.toc_list.connect("row-activated", self._on_toc_row)
@@ -179,6 +207,10 @@ class ReaderPage(Adw.NavigationPage):
 
         self.web = self._build_web_view()
         self.overlay = Gtk.Overlay(child=self.web)
+        self._seen_scrolls = deque(maxlen=256)
+        scroll_guard = Gtk.EventControllerLegacy(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        scroll_guard.connect("event", self._on_overlay_event)
+        self.overlay.add_controller(scroll_guard)
         self.prev_button = self._page_button("go-previous-symbolic", _("Previous Page"), Gtk.Align.START, "endpaper.prev()")
         self.next_button = self._page_button("go-next-symbolic", _("Next Page"), Gtk.Align.END, "endpaper.next()")
 
@@ -203,8 +235,12 @@ class ReaderPage(Adw.NavigationPage):
         )
         self.notes_wide_button.update_property([Gtk.AccessibleProperty.LABEL], [_("Double Width")])
         self.notes_wide_button.connect("toggled", self._on_notes_wide)
+        self.notes_stack = Adw.ViewStack()
+        self.notes_stack.add_titled(self.notes_panel, "notes", _("Notes"))
+        self.notes_stack.add_titled(self.bookmark_pages, "bookmarks", _("Bookmarks"))
+        switcher = Adw.InlineViewSwitcher(stack=self.notes_stack)
         self.notes_split = Adw.OverlaySplitView(
-            content=self.split, sidebar=self._sidebar_page(_("Notes"), self.notes_panel, self.notes_wide_button),
+            content=self.split, sidebar=self._sidebar_page(switcher, self.notes_stack, self.notes_wide_button),
             sidebar_position=Gtk.PackType.END, show_sidebar=False, min_sidebar_width=NOTES_MIN_WIDTH,
         )
         self._set_notes_width()
@@ -223,9 +259,10 @@ class ReaderPage(Adw.NavigationPage):
         self._set_notes_width()
         config.update(reader=self.settings)
 
-    def _sidebar_page(self, title: str, child: Gtk.Widget, start: Gtk.Widget | None = None) -> Gtk.Widget:
+    def _sidebar_page(self, title: str | Gtk.Widget, child: Gtk.Widget, start: Gtk.Widget | None = None) -> Gtk.Widget:
         """A sidebar reaches up to the window's edge and has a title bar of its own, as in Typecase."""
-        header = Adw.HeaderBar(title_widget=Adw.WindowTitle(title=title), show_back_button=False)
+        title_widget = Adw.WindowTitle(title=title) if isinstance(title, str) else title
+        header = Adw.HeaderBar(title_widget=title_widget, show_back_button=False)
         if start:
             header.pack_start(start)
         page = Adw.ToolbarView(content=child)
@@ -257,6 +294,12 @@ class ReaderPage(Adw.NavigationPage):
         self.underline_button.connect("toggled", self._on_underline)
         box.append(self.underline_button)
         box.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL, margin_start=4, margin_end=4, margin_top=4, margin_bottom=4))
+        self.bookmark_button = Gtk.ToggleButton(
+            icon_name="bookmark-new-symbolic", tooltip_text=_("Set a Bookmark (Ctrl+D)"), css_classes=["flat", "mark-choice"],
+        )
+        self.bookmark_button.update_property([Gtk.AccessibleProperty.LABEL], [_("Set a Bookmark")])
+        self.bookmark_button.connect("toggled", self._on_bookmark_button)
+        box.append(self.bookmark_button)
         self.settings_popover = self._build_settings()
         self.settings_button = Gtk.MenuButton(
             icon_name="font-select-symbolic", tooltip_text=_("Text and Layout"), has_frame=False, direction=Gtk.ArrowType.UP,
@@ -267,7 +310,7 @@ class ReaderPage(Adw.NavigationPage):
         self.mark_hint.add_css_class("dim-label")
         box.append(self.mark_hint)
         self.mark_done = Gtk.Button(label=_("Done"), tooltip_text=_("Stop Marking (Esc)"), visible=False, css_classes=["suggested-action"])
-        self.mark_done.connect("clicked", lambda _b: self.stop_marking())
+        self.mark_done.connect("clicked", lambda _b: self._on_done())
         box.append(self.mark_done)
         # Scrollable sideways in a narrow window, instead of making the page wider.
         return Gtk.ScrolledWindow(
@@ -313,10 +356,20 @@ class ReaderPage(Adw.NavigationPage):
     def _style(self) -> str:
         return "underline" if self.underline_button.get_active() else "highlight"
 
+    def _on_done(self):
+        if self.bookmark_button.get_active():
+            self.bookmark_button.set_active(False)
+        else:
+            self.stop_marking()
+
     def _update_marking(self):
         marking = self.marking
-        self.mark_done.set_visible(marking)
-        self.mark_hint.set_visible(marking)
+        placing = self.bookmark_button.get_active()
+        self.mark_done.set_visible(marking or placing)
+        self.mark_hint.set_visible(marking or placing)
+        if placing:
+            self.mark_hint.set_label(_("Click the paragraph for the bookmark."))
+            return
         if not marking:
             self.mark_hint.set_label(_("Click the first word, then the last. Double-click marks one word."))
         if self.opened:
@@ -328,6 +381,7 @@ class ReaderPage(Adw.NavigationPage):
             return
         if button.get_active():
             self._mark_color = name
+            self.bookmark_button.set_active(False)
         self._update_marking()
         self.web.grab_focus()
 
@@ -356,13 +410,16 @@ class ReaderPage(Adw.NavigationPage):
         if self.mark_popover.get_visible() or self.settings_popover.get_visible():
             return False  # a menu has its own keys
         focus = self.get_root().get_focus() if self.get_root() else None
-        in_notes = focus is not None and focus.is_ancestor(self.notes_panel)
+        in_notes = focus is not None and focus.is_ancestor(self.notes_stack)
         if keyval in (Gdk.KEY_z, Gdk.KEY_Z) and state & Gdk.ModifierType.CONTROL_MASK:
             if isinstance(focus, (Gtk.TextView, Gtk.Text)) or self._in_field:
                 return False  # a text field has its own undo
             self._undo_mark(redo=bool(state & Gdk.ModifierType.SHIFT_MASK))
             return True
         if keyval == Gdk.KEY_Escape:
+            if self.bookmark_button.get_active():
+                self.bookmark_button.set_active(False)
+                return True
             if self.marking and not in_notes:
                 self.on_escape()
                 return True
@@ -405,6 +462,7 @@ class ReaderPage(Adw.NavigationPage):
             done = True
         if done:
             self._send_marks()
+            self._bookmarks_changed()
             self._notes_changed()
             self.show_message(_("Change restored") if redo else _("Change undone"))
         else:
@@ -458,7 +516,99 @@ class ReaderPage(Adw.NavigationPage):
 
     def show_mark_notes(self, entry_id: str, new_note: bool = False):
         self.notes_button.set_active(True)
+        self.notes_stack.set_visible_child_name("notes")
         self.notes_panel.show_entry(entry_id, new_note)
+
+    # --- Bookmarks ----------------------------------------------------------------------------
+
+    def toggle_bookmark(self):
+        """The first paragraph on the page: set, or removed if it has one already."""
+        self._js("endpaper.bookmarkHere()")
+
+    def _on_bookmark_button(self, button):
+        """Waits for the click that says where. Esc or Done: nothing happened."""
+        placing = button.get_active()
+        if placing:
+            self.stop_marking()
+        self._js(f"endpaper.setBookmarkPlacing({json.dumps(placing)})")
+        self._update_marking()
+        self.web.grab_focus()
+
+    def _on_bookmark_place(self, message):
+        if not self.notes:
+            return
+        cfi, quote, chapter = message["cfi"], message.get("quote", ""), message.get("chapter")
+        existing = next((b for b in self.notes.bookmarks if b.cfi == cfi), None)
+        try:
+            if message.get("clicked"):
+                self.bookmark_button.set_active(False)
+            if existing and not message.get("clicked"):
+                self.notes.remove_bookmark(existing.id)
+                self.show_message(_("Bookmark removed"))
+            elif not existing:
+                self.notes.add_bookmark(cfi, quote, chapter)
+                self.show_message(_("Bookmark set"))
+        except NotesError:
+            self._save_failed()
+        except KeyError:
+            pass  # removed by another program meanwhile
+        self._bookmarks_changed()
+
+    def _on_bookmark_clicked(self, message):
+        bookmark = next((b for b in self.notes.bookmarks if b.cfi == message["cfi"]), None) if self.notes else None
+        if bookmark:
+            self._remove_bookmark(bookmark.id)
+            self.show_message(_("Bookmark removed"))
+
+    def _remove_bookmark(self, bookmark_id: str):
+        try:
+            self.notes.remove_bookmark(bookmark_id)
+        except NotesError:
+            self._save_failed()
+        except KeyError:
+            pass
+        self._bookmarks_changed()
+
+    def _bookmarks_changed(self):
+        self._fill_bookmarks()
+        if self.notes:
+            self._js(f"endpaper.setBookmarks({json.dumps([b.cfi for b in self.notes.bookmarks])})")
+
+    def _fill_bookmarks(self):
+        self.bookmark_list.remove_all()
+        found = sorted(self.notes.bookmarks, key=lambda b: [int(n) for n in re.findall(r"\d+", b.cfi)]) if self.notes else []
+        self.bookmark_pages.set_visible_child_name("list" if found else "empty")
+        for bookmark in found:
+            texts = Gtk.Box(hexpand=True, valign=Gtk.Align.CENTER)
+            texts.append(Gtk.Label(
+                label=bookmark.quote or _("Bookmark without text"), xalign=0, hexpand=True, ellipsize=3, lines=3, wrap=True, css_classes=["note-quote"],
+            ))
+            remove = Gtk.Button(
+                icon_name="user-trash-symbolic", tooltip_text=_("Remove Bookmark"), valign=Gtk.Align.CENTER, css_classes=["flat", "circular"],
+            )
+            remove.update_property([Gtk.AccessibleProperty.LABEL], [_("Remove Bookmark")])
+            remove.connect("clicked", lambda _b, bookmark_id=bookmark.id: self._remove_bookmark(bookmark_id))
+            line = Gtk.Box(spacing=8)
+            line.append(texts)
+            line.append(remove)
+            row = Gtk.ListBoxRow(child=line, css_classes=["card", "activatable", "bookmark-row"])
+            row.bookmark = bookmark
+            row.remove_button = remove
+            self.bookmark_list.append(row)
+
+    @staticmethod
+    def _bookmark_header(row, before):
+        chapter = row.bookmark.chapter
+        if not chapter or (before and before.bookmark.chapter == chapter):
+            row.set_header(None)
+        elif not row.get_header():
+            row.set_header(Gtk.Label(label=chapter, xalign=0, wrap=True, css_classes=["heading", "bookmark-chapter"]))
+
+    def _on_bookmark_row(self, _list, row):
+        self._js(f"endpaper.goToHref({json.dumps(row.bookmark.cfi)})")
+        if self.notes_split.get_collapsed():
+            self.notes_split.set_show_sidebar(False)
+        self.web.grab_focus()
 
     def _send_answers(self):
         if self.notes:
@@ -614,6 +764,7 @@ class ReaderPage(Adw.NavigationPage):
             self.notes = NotesFile(path, title)
         except NotesError:
             self.show_message(_("The notes of this book could not be read. Marking is off, nothing was changed."))
+        self.bookmark_button.set_sensitive(self.notes is not None)
         for button in self.mark_buttons.values():
             button.set_sensitive(self.notes is not None)
         self.underline_button.set_sensitive(self.notes is not None)
@@ -632,6 +783,7 @@ class ReaderPage(Adw.NavigationPage):
             if self.notes.refresh():
                 self._send_marks()
                 self._send_answers()
+                self._bookmarks_changed()
                 self._notes_changed()
         except NotesError:
             pass  # the next change or look tries again; nothing is written over an unread file
@@ -643,6 +795,8 @@ class ReaderPage(Adw.NavigationPage):
             self._notes_monitor = None
         self._flush_notes()
         self.notes = None
+        self.bookmark_button.set_active(False)
+        self._fill_bookmarks()
         self.notes_panel.set_notes(None)
         self.notes_button.set_active(False)
 
@@ -873,6 +1027,21 @@ class ReaderPage(Adw.NavigationPage):
         if self.book_path:
             self.on_error(_("The book could not be shown any further."))
 
+    def _on_overlay_event(self, controller, _event):
+        event = controller.get_current_event()  # PyGObject hands over nothing as the signal's own argument
+        if event is None or event.get_event_type() != Gdk.EventType.SCROLL:
+            return Gdk.EVENT_PROPAGATE
+        key = (event.get_time(), event.get_deltas(), event.is_stop())
+        return Gdk.EVENT_STOP if self._scroll_is_repeat(key) else Gdk.EVENT_PROPAGATE
+
+    def _scroll_is_repeat(self, key) -> bool:
+        """WebKit can send the event that ends a touchpad scroll through GTK again and again, tens of thousands of
+        times a second. The text then stands still for half a minute and memory runs up. Each event gets through once."""
+        if key in self._seen_scrolls:
+            return True
+        self._seen_scrolls.append(key)
+        return False
+
     def _js(self, script: str, callback=None):
         def done(web, result):
             try:
@@ -901,6 +1070,7 @@ class ReaderPage(Adw.NavigationPage):
             self._highlight_toc(self._last_toc_href)
             self._send_marks()
             self._send_answers()
+            self._bookmarks_changed()
             self._update_marking()
             if self.on_opened:
                 self.on_opened()
@@ -920,6 +1090,10 @@ class ReaderPage(Adw.NavigationPage):
             self._on_mark_range(message)
         elif kind == "mark-clicked":
             self._on_mark_clicked(message)
+        elif kind == "bookmark-place":
+            self._on_bookmark_place(message)
+        elif kind == "bookmark-clicked":
+            self._on_bookmark_clicked(message)
         elif kind == "answer":
             self._on_answer(message)
         elif kind == "field-focus":

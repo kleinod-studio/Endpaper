@@ -3,6 +3,7 @@
 import './foliate-js/view.js'
 import { adapt, audit } from './contrast.js'
 import { createMarks } from './marks.js'
+import { createBookmarks } from './bookmarks.js'
 import { createPeek } from './peek.js'
 import { createFields } from './fields.js'
 
@@ -43,6 +44,7 @@ let view = null
 let marks = null
 let peek = null
 let fields = null
+let bookmarks = null
 let settings = null
 const blocked = []
 
@@ -181,6 +183,7 @@ window.endpaper = {
             view = document.createElement('foliate-view')
             marks = createMarks(view, post)
             fields = createFields(view, post)
+            bookmarks = createBookmarks(view, post)
             peek = createPeek(view, {
                 theme: () => THEMES[settings.theme],
                 isMarking: () => marks.marking,
@@ -197,6 +200,7 @@ window.endpaper = {
                 doc.addEventListener('securitypolicyviolation', onViolation)
                 doc.addEventListener('keydown', onKeydown)
                 doc.addEventListener('wheel', onWheel, { passive: false })
+                bookmarks.attach(doc)
                 marks.attach(doc)
                 peek.attach(doc, index)
                 fields.attach(doc, index)
@@ -324,6 +328,10 @@ window.endpaper = {
     goToIndex: index => view.goTo(index),
     sections: () => view.book.sections.map(s => ({ linear: s.linear, size: s.size })),
     setAnswers: answers => fields?.setAnswers(answers),
+    setBookmarks: list => bookmarks?.setAll(list),
+    bookmarkHere: () => bookmarks?.here(),
+    setBookmarkPlacing: on => bookmarks?.setPlacing(on),
+    bookmarkState: () => bookmarks?.state,
     // For the tests: what a person does in a field, and what is in it.
     fieldInput(selector, value) {
         const element = view.renderer.getContents()[0].doc.querySelector(selector)

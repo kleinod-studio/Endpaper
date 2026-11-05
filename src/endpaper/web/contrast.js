@@ -147,7 +147,7 @@ export const adapt = (doc, theme) => {
 
     // First read everything, then write: reading after writing would recalculate styles every time.
     const visit = (element, background) => {
-        if (SKIP.has(element.tagName)) return
+        if (SKIP.has(element.tagName.toUpperCase())) return // in a book's XHTML, names are in lower case
         const style = view.getComputedStyle(element)
         let here = background
         if (style.backgroundImage === 'none') {
@@ -193,7 +193,7 @@ export const audit = (doc, pageBackground) => {
     const page = parseColor(pageBackground)
     let checked = 0, below = 0, lowest = 21, sample = null, detail = null
     const visit = (element, background) => {
-        if (SKIP.has(element.tagName)) return
+        if (SKIP.has(element.tagName.toUpperCase())) return
         const style = view.getComputedStyle(element)
         let here = background
         const color = parseColor(style.backgroundColor)

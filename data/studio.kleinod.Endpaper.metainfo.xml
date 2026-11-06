@@ -17,6 +17,10 @@
       <li>The table of contents beside the text, and the way back after following a link</li>
       <li>Your choice of font, text size, line spacing, text width, hyphenation and colors</li>
       <li>Pages or continuous scrolling, and every book remembers where you were</li>
+      <li>Mark passages without dragging: choose a color, click the first and the last word</li>
+      <li>Notes in Markdown beside the text, saved as a readable file next to the book</li>
+      <li>Bookmarks, answer fields of study editions, and previews of footnotes</li>
+      <li>Search in the open book and across the whole library, with other forms of a word</li>
     </ul>
     <p>Endpaper works completely offline, collects no data, and never changes your books. Books protected by DRM are not supported.</p>
   </description>
@@ -37,6 +41,18 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.0" date="2026-11-06">
+      <description>
+        <p>Marks, notes and search.</p>
+        <ul>
+          <li>Mark passages in five colors with two clicks, a double click or the keyboard, and add notes in Markdown</li>
+          <li>A panel with all marks and notes, bookmarks, and answer fields that are saved beside the book</li>
+          <li>Previews of footnotes and references, and pictures shown large</li>
+          <li>Search in the open book, and across the library with word forms in German and English and suggestions for typing errors</li>
+          <li>Reading progress as a ring, reference works, and a focus mode</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-11-04">
       <description>
         <p>First version: the bookshelf and reading.</p>

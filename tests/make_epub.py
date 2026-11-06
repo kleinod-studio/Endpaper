@@ -31,7 +31,9 @@ def chapter(title: str, paragraphs: int) -> str:
     )
 
 
-def make_epub(path: Path, title="Test Book", author="A. Author", identifier="urn:test:1", cover=True, chapters=3, paragraphs=40):
+def make_epub(path: Path, title="Test Book", author="A. Author", identifier="urn:test:1", cover=True, chapters=3, paragraphs=40,
+              language="en", extra=""):
+    """extra: one more paragraph at the end of the first chapter."""
     items, spine, toc = [], [], []
     with zipfile.ZipFile(path, "w") as z:
         z.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
@@ -41,7 +43,10 @@ def make_epub(path: Path, title="Test Book", author="A. Author", identifier="urn
             '<rootfiles><rootfile full-path="OEBPS/p.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
         )
         for n in range(1, chapters + 1):
-            z.writestr(f"OEBPS/ch{n}.xhtml", chapter(f"Chapter {n}", paragraphs))
+            text = chapter(f"Chapter {n}", paragraphs)
+            if extra and n == 1:
+                text = text.replace("</body>", f"<p>{extra}</p></body>")
+            z.writestr(f"OEBPS/ch{n}.xhtml", text)
             items.append(f'<item id="c{n}" href="ch{n}.xhtml" media-type="application/xhtml+xml"/>')
             spine.append(f'<itemref idref="c{n}"/>')
             toc.append(f'<li><a href="ch{n}.xhtml">Chapter {n}</a></li>')
@@ -59,7 +64,7 @@ def make_epub(path: Path, title="Test Book", author="A. Author", identifier="urn
             "OEBPS/p.opf",
             '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="i">'
             f'<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="i">{identifier}</dc:identifier>'
-            f"<dc:title>{title}</dc:title>{creator}<dc:language>en</dc:language></metadata>"
+            f"<dc:title>{title}</dc:title>{creator}<dc:language>{language}</dc:language></metadata>"
             f'<manifest>{"".join(items)}</manifest><spine>{"".join(spine)}</spine></package>',
         )
     return path

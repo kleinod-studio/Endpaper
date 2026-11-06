@@ -17,7 +17,7 @@ Your books stay plain `.epub` files in a folder of your choice, with one subfold
 - **Table of contents**: beside the text, with the current chapter highlighted (F9). After following a link, a button takes you back.
 - **Focus mode**: F11 or Ctrl+Shift+Enter shows only the text and the bar below it, full screen, like focus mode in Typecase. The text spreads wider, with more room above and below. The header bar comes back at the top edge; Esc leaves.
 - **Search in the book**: Ctrl+F lists every place by chapter, each with a short excerpt that shows your marks. Your notes and answers that match stand among them, in the order of the book. Enter goes from one to the next.
-- **Search in the library**: the search on the shelf finds titles and authors, and also the words in the text of every book and in your notes. Each book shows its first passages, and a click opens it right there. The text is read once in the background, into a cache that can always be thrown away.
+- **Search in the library**: the search on the shelf finds titles and authors, and also the words in the text of every book and in your notes. Each book shows its cover and its first passages, with your marks in them, and a click opens it right there. Other forms of a word count too, in German and English (house, houses), and a word with a typing error finds the closest one in your books. The text is read once in the background, into a cache that can always be thrown away.
 - **Your way of reading**: font, text size, line spacing, text width, hyphenation, and light, sepia or dark colors that also apply to books with colors of their own.
 - **Bookmarks**: Ctrl+D or a button below the text sets one on a paragraph. The list stands in the flyout beside your notes.
 - **Answer fields**: text fields and tick boxes of study editions work. What you enter is saved in the notes file beside the book, and the book itself stays as it is.
@@ -70,6 +70,6 @@ The second one drives the real interface and needs a desktop session, with a win
 
 ## License
 
-GPL-3.0-or-later. Endpaper uses [foliate-js](https://github.com/johnfactotum/foliate-js) (MIT) with [zip.js](https://github.com/gildas-lormeau/zip.js) (BSD-3-Clause); see `src/endpaper/web/foliate-js/VENDORED.md`.
+GPL-3.0-or-later. Endpaper uses [foliate-js](https://github.com/johnfactotum/foliate-js) (MIT) with [zip.js](https://github.com/gildas-lormeau/zip.js) (BSD-3-Clause); see `src/endpaper/web/foliate-js/VENDORED.md`. Word forms come from the German and English stemmers of [Snowball](https://snowballstem.org) (BSD-3-Clause); see `src/endpaper/snowball/VENDORED.md`.
 
 This project is developed with AI assistance (Claude).

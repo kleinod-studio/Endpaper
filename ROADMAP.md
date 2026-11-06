@@ -44,7 +44,8 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 - [x] Full-text search in the open book, with the results by chapter beside the text (Ctrl+F)
 - [x] Search in your notes and answers, shown among the results in the order of the book, with your marks in the excerpts
 - [x] Full-text search across the library, indexed in the background, optionally in one category, with your notes and answers
-- [ ] Word forms and small typing errors (house, houses), by the language of the book
+- [x] Word forms (house, houses) by the language of the book, German and English, and the closest word for a typing error
+- [x] Your marks in the excerpts of the library search
 
 ## Phase 4: Intelligent search, on your computer
 

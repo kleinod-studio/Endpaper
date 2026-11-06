@@ -27,6 +27,9 @@ install_data(
 # The reading area: our page, and the rendering library foliate-js
 install_subdir('endpaper/web', install_dir: pkgdatadir / 'endpaper')
 
+# Word forms for the search: Snowball stemmers (see endpaper/snowball/VENDORED.md)
+install_subdir('endpaper/snowball', install_dir: pkgdatadir / 'endpaper', exclude_directories: ['__pycache__'])
+
 launcher = configuration_data()
 launcher.set('pkgdatadir', pkgdatadir)
 launcher.set('localedir', get_option('prefix') / get_option('localedir'))

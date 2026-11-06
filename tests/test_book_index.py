@@ -136,6 +136,56 @@ class IndexTest(unittest.TestCase):
         self.build([self.two])
         self.assertEqual(len(self.search("sentence")), 1)
 
+    def test_other_forms_of_a_word_are_found_in_the_language_of_the_book(self):
+        german = make_epub(self.dir / "de.epub", title="De", identifier="urn:de", chapters=1, paragraphs=1,
+                           language="de-DE", extra="Die Häuser der Stadt, und die Gnade Gottes.")
+        self.build([german, self.two])
+        self.assertEqual([Path(f.book).name for f in self.search("Haus")], ["de.epub"], "without its umlaut")
+        found = self.search("Gnaden")
+        self.assertEqual([Path(f.book).name for f in found], ["de.epub"])
+        passage = found[0].passages[0]
+        self.assertEqual(passage["query"], "Gnade", "the book is searched for the word as it stands there")
+        self.assertIn({"text": "Gnade", "word": True}, passage["parts"])
+        self.assertEqual([f.count for f in self.search("sentences", [str(self.two)])], [1], "English forms too")
+        self.assertNotIn("query", self.search("Gnade")[0].passages[0], "the word itself needs nothing else")
+
+    def test_a_word_with_a_typing_error_is_offered_the_closest_one(self):
+        self.build([self.one])
+        index = Index(self.file)
+        try:
+            self.assertEqual(self.search("sentense"), [])
+            self.assertEqual(index.suggest("sentense numbr"), "sentence number")
+            self.assertIsNone(index.suggest("sentence"), "nothing to correct")
+            self.assertIsNone(index.suggest("xqzzv"), "nothing close")
+            self.assertIsNone(index.suggest("cha"), "too short to guess")
+        finally:
+            index.close()
+
+    def test_excerpts_show_the_readers_marks(self):
+        self.build([self.one])
+        first = self.search("number 0 of the chapter called Chapter 1")[0].passages[0]
+        self.assertEqual((first["section"], first["path"]), (0, [1, 2]))
+        mark = {"cfi": "epubcfi(/6/2!/4/6,/1:0,/1:10)", "quote": "0 Sentence", "color": "#33d17a", "underline": False}
+        line = {"cfi": "epubcfi(/6/2!/4/6,/1:2,/1:10)", "quote": "Sentence number 1", "color": "#62a0ea", "underline": True}
+        index = Index(self.file)
+        try:
+            parts = index.search("number 0 of the chapter called Chapter 1", marks={str(self.one): [mark, line]})[0].passages[0]["parts"]
+        finally:
+            index.close()
+        self.assertEqual(parts[0], {"text": "0 Sentence", "color": "#33d17a"})
+        self.assertIn({"text": "number 0 of the chapter called Chapter 1", "word": True}, parts)
+        self.assertTrue(any(p.get("underline") and p.get("color") == "#62a0ea" for p in parts), parts)
+
+    def test_marks_are_placed_by_their_cfi_and_quote(self):
+        self.assertEqual(book_index.cfi_places("epubcfi(/6/4[c2]!/4[body]/2/10,/1:5,/4/1:12)"), (1, [1, 0, 4], [1, 0, 4, 1]))
+        self.assertEqual(book_index.cfi_places("epubcfi(/6/2!/4/6)"), (0, [1, 2], [1, 2]))
+        self.assertIsNone(book_index.cfi_places("no cfi"))
+        text = "The end of one paragraph."
+        self.assertEqual(book_index._marked_range(text, "one paragraph. And the start"), (11, 25))
+        self.assertEqual(book_index._marked_range(text, "before. The end"), (0, 7))
+        self.assertEqual(book_index._marked_range(text, "x The end of one paragraph. y"), (0, 25))
+        self.assertIsNone(book_index._marked_range(text, "somewhere else entirely"))
+
     def test_runs_as_a_process_of_its_own(self):
         result = subprocess.run(
             [sys.executable, "-m", "endpaper.book_index", str(self.file)],

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: endpaper\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-06 15:40+0100\n"
+"POT-Creation-Date: 2026-11-06 16:20+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -81,16 +81,16 @@ msgstr ""
 msgid "Focus Mode"
 msgstr ""
 
-#: src/endpaper/reader_view.py:201 src/endpaper/shelf.py:368
+#: src/endpaper/reader_view.py:201 src/endpaper/shelf.py:369
 #: src/endpaper/window.py:215
 msgid "Keyboard Shortcuts"
 msgstr ""
 
-#: src/endpaper/reader_view.py:202 src/endpaper/shelf.py:369
+#: src/endpaper/reader_view.py:202 src/endpaper/shelf.py:370
 msgid "About Endpaper"
 msgstr ""
 
-#: src/endpaper/reader_view.py:203 src/endpaper/shelf.py:371
+#: src/endpaper/reader_view.py:203 src/endpaper/shelf.py:372
 msgid "Main Menu"
 msgstr ""
 
@@ -221,8 +221,8 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/endpaper/reader_view.py:766 src/endpaper/shelf.py:892
-#: src/endpaper/shelf.py:911 src/endpaper/shelf.py:964
+#: src/endpaper/reader_view.py:766 src/endpaper/shelf.py:921
+#: src/endpaper/shelf.py:940 src/endpaper/shelf.py:993
 #: src/endpaper/window.py:138 src/endpaper/notes_panel.py:275
 msgid "Cancel"
 msgstr ""
@@ -361,8 +361,8 @@ msgstr ""
 msgid "There is no mark at this word."
 msgstr ""
 
-#: src/endpaper/reader_view.py:1257 src/endpaper/shelf.py:717
-#: src/endpaper/shelf.py:788
+#: src/endpaper/reader_view.py:1257 src/endpaper/shelf.py:746
+#: src/endpaper/shelf.py:817
 msgid "This file could not be opened as a book."
 msgstr ""
 
@@ -406,12 +406,12 @@ msgid_plural "{count} results"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/endpaper/reader_view.py:1490 src/endpaper/shelf.py:695
+#: src/endpaper/reader_view.py:1490 src/endpaper/shelf.py:723
 #: src/endpaper/notes_panel.py:29
 msgid "Note"
 msgstr ""
 
-#: src/endpaper/reader_view.py:1490 src/endpaper/shelf.py:695
+#: src/endpaper/reader_view.py:1490 src/endpaper/shelf.py:723
 msgid "Your Answer"
 msgstr ""
 
@@ -433,11 +433,11 @@ msgstr ""
 msgid "Cannot be read"
 msgstr ""
 
-#: src/endpaper/shelf.py:134 src/endpaper/shelf.py:754
+#: src/endpaper/shelf.py:134 src/endpaper/shelf.py:783
 msgid "Unpin"
 msgstr ""
 
-#: src/endpaper/shelf.py:134 src/endpaper/shelf.py:754
+#: src/endpaper/shelf.py:134 src/endpaper/shelf.py:783
 msgid "Pin"
 msgstr ""
 
@@ -458,8 +458,8 @@ msgid "No books here yet. Drag them here or add them from the menu."
 msgstr ""
 
 #: src/endpaper/shelf.py:250 src/endpaper/shelf.py:276
-#: src/endpaper/shelf.py:582 src/endpaper/shelf.py:761
-#: src/endpaper/shelf.py:961
+#: src/endpaper/shelf.py:583 src/endpaper/shelf.py:790
+#: src/endpaper/shelf.py:990
 msgid "Without Category"
 msgstr ""
 
@@ -478,171 +478,176 @@ msgstr ""
 msgid "Fold"
 msgstr ""
 
-#: src/endpaper/shelf.py:352
+#: src/endpaper/shelf.py:353
 msgid "New Category…"
 msgstr ""
 
-#: src/endpaper/shelf.py:353 src/endpaper/shelf.py:413
-#: src/endpaper/shelf.py:738
+#: src/endpaper/shelf.py:354 src/endpaper/shelf.py:414
+#: src/endpaper/shelf.py:767
 msgid "Add Books…"
 msgstr ""
 
-#: src/endpaper/shelf.py:354 src/endpaper/shelf.py:965
+#: src/endpaper/shelf.py:355 src/endpaper/shelf.py:994
 msgid "Add"
 msgstr ""
 
-#: src/endpaper/shelf.py:357
+#: src/endpaper/shelf.py:358
 msgid "Search the Library"
 msgstr ""
 
-#: src/endpaper/shelf.py:362
+#: src/endpaper/shelf.py:363
 msgid "Title"
 msgstr ""
 
-#: src/endpaper/shelf.py:363
+#: src/endpaper/shelf.py:364
 msgid "Author"
 msgstr ""
 
-#: src/endpaper/shelf.py:364
+#: src/endpaper/shelf.py:365
 msgid "Recently Read"
 msgstr ""
 
-#: src/endpaper/shelf.py:365
+#: src/endpaper/shelf.py:366
 msgid "Sort By"
 msgstr ""
 
-#: src/endpaper/shelf.py:367 src/endpaper/shelf.py:404
+#: src/endpaper/shelf.py:368 src/endpaper/shelf.py:405
 msgid "Choose Library Folder…"
 msgstr ""
 
-#: src/endpaper/shelf.py:373
+#: src/endpaper/shelf.py:374
 msgid "Title, author or words in the books"
 msgstr ""
 
-#: src/endpaper/shelf.py:375 src/endpaper/shelf.py:581
+#: src/endpaper/shelf.py:376 src/endpaper/shelf.py:582
 msgid "All Categories"
 msgstr ""
 
-#: src/endpaper/shelf.py:376 src/endpaper/shelf.py:377
+#: src/endpaper/shelf.py:377 src/endpaper/shelf.py:378
 msgid "Search In"
 msgstr ""
 
-#: src/endpaper/shelf.py:394
+#: src/endpaper/shelf.py:395
 msgid "In the Text"
 msgstr ""
 
-#: src/endpaper/shelf.py:409
+#: src/endpaper/shelf.py:410
 msgid "Welcome to Endpaper"
 msgstr ""
 
-#: src/endpaper/shelf.py:410
+#: src/endpaper/shelf.py:411
 msgid ""
 "Choose a folder for your books. Each of its subfolders becomes a category on "
 "your shelf."
 msgstr ""
 
-#: src/endpaper/shelf.py:418
+#: src/endpaper/shelf.py:419
 msgid "Your Shelf Is Empty"
 msgstr ""
 
-#: src/endpaper/shelf.py:419
+#: src/endpaper/shelf.py:420
 msgid ""
 "Add EPUB books, or drag them here. They are copied into your library folder."
 msgstr ""
 
-#: src/endpaper/shelf.py:421
+#: src/endpaper/shelf.py:422
 msgid "No Books Found"
 msgstr ""
 
-#: src/endpaper/shelf.py:621
+#: src/endpaper/shelf.py:638
 #, python-brace-format
 msgid "Not all books have been read for the search yet: {done} of {total}."
 msgstr ""
 
-#: src/endpaper/shelf.py:677
+#: src/endpaper/shelf.py:674
+#, python-brace-format
+msgid "Nothing found for “{query}”. Showing “{suggestion}”."
+msgstr ""
+
+#: src/endpaper/shelf.py:705
 #, python-brace-format
 msgid "{count} passage"
 msgid_plural "{count} passages"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/endpaper/shelf.py:679
+#: src/endpaper/shelf.py:707
 #, python-brace-format
 msgid "{count} own note"
 msgid_plural "{count} own notes"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/endpaper/shelf.py:681
+#: src/endpaper/shelf.py:709
 msgid "Show All"
 msgstr ""
 
-#: src/endpaper/shelf.py:683
+#: src/endpaper/shelf.py:711
 #, python-brace-format
 msgid "Show all passages in “{title}”"
 msgstr ""
 
-#: src/endpaper/shelf.py:740 src/endpaper/shelf.py:769
+#: src/endpaper/shelf.py:769 src/endpaper/shelf.py:798
 msgid "Rename…"
 msgstr ""
 
-#: src/endpaper/shelf.py:741 src/endpaper/shelf.py:770
-#: src/endpaper/shelf.py:893
+#: src/endpaper/shelf.py:770 src/endpaper/shelf.py:799
+#: src/endpaper/shelf.py:922
 msgid "Move to Trash"
 msgstr ""
 
-#: src/endpaper/shelf.py:753 src/endpaper/window.py:139
+#: src/endpaper/shelf.py:782 src/endpaper/window.py:139
 msgid "Open"
 msgstr ""
 
-#: src/endpaper/shelf.py:755
+#: src/endpaper/shelf.py:784
 msgid "No Longer a Reference Work"
 msgstr ""
 
-#: src/endpaper/shelf.py:755
+#: src/endpaper/shelf.py:784
 msgid "Mark as Reference Work"
 msgstr ""
 
-#: src/endpaper/shelf.py:768
+#: src/endpaper/shelf.py:797
 msgid "Move To"
 msgstr ""
 
-#: src/endpaper/shelf.py:835
+#: src/endpaper/shelf.py:864
 msgid "Rename Book"
 msgstr ""
 
-#: src/endpaper/shelf.py:835 src/endpaper/shelf.py:879
+#: src/endpaper/shelf.py:864 src/endpaper/shelf.py:908
 msgid "Rename"
 msgstr ""
 
-#: src/endpaper/shelf.py:842 src/endpaper/shelf.py:900
+#: src/endpaper/shelf.py:871 src/endpaper/shelf.py:929
 #, python-brace-format
 msgid "“{title}” was moved to the trash."
 msgstr ""
 
-#: src/endpaper/shelf.py:850
+#: src/endpaper/shelf.py:879
 #, python-brace-format
 msgid "Could not move to the trash: {reason}"
 msgstr ""
 
-#: src/endpaper/shelf.py:866 src/endpaper/window.py:169
+#: src/endpaper/shelf.py:895 src/endpaper/window.py:169
 msgid "New Category"
 msgstr ""
 
-#: src/endpaper/shelf.py:866
+#: src/endpaper/shelf.py:895
 msgid "Create"
 msgstr ""
 
-#: src/endpaper/shelf.py:879
+#: src/endpaper/shelf.py:908
 msgid "Rename Category"
 msgstr ""
 
-#: src/endpaper/shelf.py:885
+#: src/endpaper/shelf.py:914
 #, python-brace-format
 msgid "Move “{name}” to the Trash?"
 msgstr ""
 
-#: src/endpaper/shelf.py:887
+#: src/endpaper/shelf.py:916
 #, python-brace-format
 msgid ""
 "The folder goes to the trash with {count} book. You can restore it from "
@@ -653,30 +658,30 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/endpaper/shelf.py:906
+#: src/endpaper/shelf.py:935
 msgid "Name"
 msgstr ""
 
-#: src/endpaper/shelf.py:929
+#: src/endpaper/shelf.py:958
 msgid "EPUB Books"
 msgstr ""
 
-#: src/endpaper/shelf.py:945 src/endpaper/window.py:170
+#: src/endpaper/shelf.py:974 src/endpaper/window.py:170
 msgid "Add Books"
 msgstr ""
 
-#: src/endpaper/shelf.py:960
+#: src/endpaper/shelf.py:989
 msgid "Add to Which Category?"
 msgstr ""
 
-#: src/endpaper/shelf.py:993
+#: src/endpaper/shelf.py:1022
 #, python-brace-format
 msgid "{count} book added."
 msgid_plural "{count} books added."
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/endpaper/shelf.py:1001
+#: src/endpaper/shelf.py:1030
 msgid "Choose Library Folder"
 msgstr ""
 

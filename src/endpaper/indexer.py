@@ -137,19 +137,33 @@ class Indexer:
             self._index.close()
             self._index = None
 
-    def search(self, query: str, books: list[str] | None = None):
-        if self._index is None:
-            if not self.file.exists():
-                return []
+    def _open(self) -> Index | None:
+        if self._index is None and self.file.exists():
             try:
                 self._index = Index(self.file)
             except sqlite3.Error:
-                return []
+                self._index = None
+        return self._index
+
+    def search(self, query: str, books: list[str] | None = None, marks: dict | None = None):
+        """See Index.search. marks: the reader's marks by book, to show in the excerpts."""
+        if (index := self._open()) is None:
+            return []
         try:
-            return self._index.search(query, books)
+            return index.search(query, books, marks)
         except sqlite3.Error:
             self._reopen()
             return []
+
+    def suggest(self, query: str) -> str | None:
+        """See Index.suggest: the closest words to a query that finds nothing."""
+        if (index := self._open()) is None:
+            return None
+        try:
+            return index.suggest(query)
+        except sqlite3.Error:
+            self._reopen()
+            return None
 
     def shutdown(self):
         if self.process:

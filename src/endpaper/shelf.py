@@ -10,7 +10,7 @@ from . import config, library
 from .book_info import BookInfo, BookInfoStore
 from .indexer import Indexer, install_note_tints, parts_markup
 from .library import Book, Category, LibraryError
-from .notes import NotesError, NotesFile
+from .notes import MARK_COLORS, NotesError, NotesFile
 from .progress_ring import ProgressRing, install_css as install_ring_css
 
 COVER_WIDTH = 130
@@ -334,6 +334,7 @@ class ShelfPage(Adw.NavigationPage):
         self.categories: list[Category] = []
         self.query = ""
         self.scope: Path | None = None  # the category the search is limited to
+        self.suggestion: str | None = None  # what is shown instead of a query that found nothing
         self._scopes: list[Path | None] = [None]
         self._notes: dict[Path, tuple[tuple, NotesFile]] = {}  # read once, again when the file changes
         self.sort_mode = config.sort_mode()
@@ -593,27 +594,43 @@ class ShelfPage(Adw.NavigationPage):
     def _books_in_scope(self) -> list[Path]:
         return [b.path for c in self.categories if self.scope in (None, c.path) for b in c.books]
 
-    def _search_notes(self, text: str, books: list[Path]) -> dict[Path, list[dict]]:
-        """The reader's own notes and answers in which the text stands, read from the notes beside each book."""
-        found = {}
-        for book in books:
-            path = library.notes_path_for(book)
+    def _notes_of(self, book: Path) -> NotesFile | None:
+        """The notes beside a book, only read: once, and again when the file changes."""
+        path = library.notes_path_for(book)
+        try:
+            stat = path.stat()
+        except OSError:
+            self._notes.pop(book, None)
+            return None
+        stamp = (stat.st_size, stat.st_mtime_ns)
+        known = self._notes.get(book)
+        if known is None or known[0] != stamp:
             try:
-                stat = path.stat()
-            except OSError:
-                self._notes.pop(book, None)
-                continue
-            stamp = (stat.st_size, stat.st_mtime_ns)
-            known = self._notes.get(book)
-            if known is None or known[0] != stamp:
-                try:
-                    known = (stamp, NotesFile(book))
-                except (NotesError, OSError):
-                    continue
-                self._notes[book] = known
-            if items := known[1].search(text):
-                found[book] = items
-        return found
+                known = (stamp, NotesFile(book))
+            except (NotesError, OSError):
+                return None
+            self._notes[book] = known
+        return known[1]
+
+    def _search_notes(self, text: str, books: list[Path]) -> dict[Path, list[dict]]:
+        """The reader's own notes and answers in which the text stands."""
+        return {book: items for book in books if (notes := self._notes_of(book)) and (items := notes.search(text))}
+
+    def _marks_of(self, books: list[Path]) -> dict[str, list[dict]]:
+        """The reader's marks, to show them in the excerpts as in the book."""
+        marks = {}
+        for book in books:
+            if notes := self._notes_of(book):
+                marks[str(book)] = [
+                    {"cfi": entry.cfi, "quote": entry.quote, "color": MARK_COLORS.get(entry.color),
+                     "underline": entry.style == "underline"}
+                    for entry in notes.entries if entry.quote]
+        return marks
+
+    def _search_text(self, text: str, books: list[Path]):
+        passages = {Path(item.book): item for item in self.indexer.search(
+            text, [str(b) for b in books], self._marks_of(books))}
+        return passages, self._search_notes(text, books)
 
     def _index_note(self) -> str | None:
         if not self.indexer.busy or not self.indexer.total:
@@ -635,8 +652,14 @@ class ShelfPage(Adw.NavigationPage):
         text = self.search_entry.get_text().strip()
         searching = len(text) >= MIN_TEXT_QUERY
         books = self._books_in_scope() if searching else []
-        passages = {Path(item.book): item for item in self.indexer.search(text, [str(b) for b in books])} if books else {}
-        own = self._search_notes(text, books) if books else {}
+        passages, own = self._search_text(text, books) if books else ({}, {})
+        # A typing error: the closest words in the books instead, said plainly.
+        suggestion = None
+        if books and not passages and not own and not any(s.get_visible() for s in self.sections.values()):
+            if suggestion := self.indexer.suggest(text):
+                passages, own = self._search_text(suggestion, books)
+        self.suggestion = suggestion if (passages or own) else None
+        query = self.suggestion or text
         # The books with the most finds first, the reader's own words counted alongside the text.
         order = sorted(set(passages) | set(own), key=lambda book: (
             -(len(own.get(book, [])) + (passages[book].count if book in passages else 0)), str(book)))
@@ -644,11 +667,16 @@ class ShelfPage(Adw.NavigationPage):
         for book in order:
             card = self._card_for(str(book))
             if card is not None:
-                found.append(self._found_group(card, passages.get(book), own.get(book, []), text))
+                found.append(self._found_group(card, passages.get(book), own.get(book, []), query))
                 self.found_list.append(found[-1])
-        note = self._index_note() if searching else None
-        self.found_status.set_label(note or "")
-        self.found_status.set_visible(bool(note) and bool(found))
+        notes = []
+        if self.suggestion:
+            notes.append(_("Nothing found for “{query}”. Showing “{suggestion}”.").format(
+                query=text, suggestion=self.suggestion))
+        if searching and (note := self._index_note()):
+            notes.append(note)
+        self.found_status.set_label("\n".join(notes))
+        self.found_status.set_visible(bool(notes) and bool(found))
         self.found_heading.set_visible(bool(found))
 
     def _found_cover(self, card: BookCard, query: str) -> Gtk.Widget:
@@ -705,7 +733,8 @@ class ShelfPage(Adw.NavigationPage):
         for passage in (item.passages if item else []):
             row = Adw.ActionRow(title=parts_markup(passage["parts"]), activatable=True)
             row.kind = "text"
-            goal = {"query": query, "section": passage["section"], "path": passage["path"]}
+            # Another form of the word is searched in the book as it stands there: that search knows no forms.
+            goal = {"query": passage.get("query", query), "section": passage["section"], "path": passage["path"]}
             row.connect("activated", lambda _r, goal=goal: self.open_found(card, goal))
             group.add(row)
             box.rows.append(row)

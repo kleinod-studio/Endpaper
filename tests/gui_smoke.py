@@ -1073,6 +1073,12 @@ def scenario(app, window):
     window.navigation.pop()
     wait_for(lambda: window.navigation.get_visible_page() is shelf)
     own_note = NotesFile(LIB / "notes.epub").add(entry.cfi, "A paragraph of its own", "A library harvest note", "One", color="green")
+    shelf.search_entry.set_text("worth looking")
+    check(wait_for(lambda: group() is not None and 'background="#33d17a"' in group().rows[0].get_title(), 5),
+          "the excerpts show the reader's marks, as in the book")
+    shelf.search_entry.set_text("heding")
+    check(wait_for(lambda: group() is not None and shelf.suggestion == "heading", 5), "a typing error finds the closest word")
+    check(shelf.found_status.get_visible() and "heding" in shelf.found_status.get_label(), "and says so")
     shelf.search_entry.set_text("library harvest")
     check(wait_for(lambda: group() is not None and group().rows[0].kind == "note", 5), "the reader's own notes are found too")
     check("note-tint-green" in group().rows[0].get_css_classes() and "1 own note" in group().group.get_description(),

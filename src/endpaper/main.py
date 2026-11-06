@@ -105,6 +105,10 @@ class EndpaperApplication(Adw.Application):
         about.add_legal_section(
             "zip.js", "© Gildas Lormeau", Gtk.License.BSD_3, None,
         )
+        about.add_legal_section(
+            "Snowball", "© 2001 Dr Martin Porter, © 2004, 2005 Richard Boulton, © 2013 Yoshiki Shibukawa, "
+            "© 2006–2025 Olly Betts", Gtk.License.BSD_3, None,
+        )
         about.present(self.get_active_window())
 
 

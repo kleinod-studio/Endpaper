@@ -11,6 +11,7 @@ from .book_info import BookInfo, BookInfoStore
 from .indexer import Indexer, install_note_tints, parts_markup
 from .library import Book, Category, LibraryError
 from .notes import NotesError, NotesFile
+from .progress_ring import ProgressRing, install_css as install_ring_css
 
 COVER_WIDTH = 130
 COVER_HEIGHT = 190
@@ -36,6 +37,7 @@ class BookCard(Gtk.FlowBoxChild):
         self.book = book
         self.info = BookInfo(title=book.path.stem)
         self.pinned = False
+        self.reference = False  # a book to look things up in: no progress is shown
 
         self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True, visible=False)
         self.placeholder = Gtk.Label(
@@ -53,8 +55,13 @@ class BookCard(Gtk.FlowBoxChild):
         stack.add_css_class("card")
         self.cover_frame = stack
 
-        self.progress = Gtk.ProgressBar(valign=Gtk.Align.END, visible=False)
-        self.progress.add_css_class("osd")
+        install_ring_css()
+        self.ring = ProgressRing(20, 3)
+        self.progress = Gtk.Box(
+            halign=Gtk.Align.END, valign=Gtk.Align.END, margin_end=6, margin_bottom=6, visible=False,
+            css_classes=["progress-disc"], can_target=False,
+        )
+        self.progress.append(self.ring)
         stack.add_overlay(self.progress)
 
         self.pin_button = Gtk.Button(
@@ -129,14 +136,16 @@ class BookCard(Gtk.FlowBoxChild):
             self.pin_button.add_css_class("accent")
         else:
             self.pin_button.remove_css_class("accent")
-        fraction = self.shelf.state.fraction(self.info.key) if self.info.key else None
+        fraction = self.shelf.state.fraction(self.info.key) if self.info.key and not self.reference else None
         self.progress.set_visible(bool(fraction))
-        self.progress.set_fraction(fraction or 0)
+        self.ring.show_progress(fraction or 0, animate=False)
         parts = [self.info.title]
         if author:
             parts.append(author)
         if self.pinned:
             parts.append(_("Pinned"))
+        if self.reference:
+            parts.append(_("Reference Work"))
         if fraction:
             parts.append(_("{percent}%").format(percent=round(fraction * 100)))
         self.update_property([Gtk.AccessibleProperty.LABEL], [", ".join(parts)])
@@ -252,6 +261,7 @@ class CategorySection(Gtk.Box):
             else:
                 card.book = book
             card.pinned = category.is_pinned(book)
+            card.reference = category.is_reference(book)
             card.update_display()
         count = len(category.books)
         self.count.set_label(str(count))
@@ -437,6 +447,7 @@ class ShelfPage(Adw.NavigationPage):
             ("trash-category", self._action_trash_category, "s"),
             ("open", lambda _a, p: self._with_card(p, self.open_card), "s"),
             ("toggle-pin", lambda _a, p: self._with_card(p, self.toggle_pin), "s"),
+            ("toggle-reference", lambda _a, p: self._with_card(p, self.toggle_reference), "s"),
             ("rename-book", lambda _a, p: self._with_card(p, self.rename_book), "s"),
             ("trash-book", lambda _a, p: self._with_card(p, self.trash_book), "s"),
             ("move-book", self._action_move_book, "as"),
@@ -741,6 +752,8 @@ class ShelfPage(Adw.NavigationPage):
         first = Gio.Menu()
         add(first, _("Open"), "shelf.open")
         add(first, _("Unpin") if card.pinned else _("Pin"), "shelf.toggle-pin")
+        add(first, _("No Longer a Reference Work") if card.reference else _("Mark as Reference Work"),
+            "shelf.toggle-reference")
         menu.append_section(None, first)
         destinations = Gio.Menu()
         for category in self.categories:
@@ -787,6 +800,10 @@ class ShelfPage(Adw.NavigationPage):
 
     def toggle_pin(self, card: BookCard):
         self._attempt(lambda: library.set_pinned(card.book, not card.pinned))
+
+    def toggle_reference(self, card: BookCard):
+        """A book to look things up in rather than to read through shows no progress."""
+        self._attempt(lambda: library.set_reference(card.book, not card.reference))
 
     def _action_move_book(self, _action, parameter):
         path, category = parameter.unpack()

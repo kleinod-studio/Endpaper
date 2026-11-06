@@ -19,8 +19,9 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 - [x] Changes in the folder from outside appear on the shelf
 - [x] Reading with mouse, scroll wheel and keyboard; pages (two side by side in a wide window) or continuous scrolling
 - [x] Table of contents beside the text, and a way back after following a link
-- [x] Reading position per book
+- [x] Reading position per book, and progress as a ring on the cover and in the open book; reference works show none
 - [x] Font, size, line spacing, text width, hyphenation; light, sepia and dark colors
+- [x] Focus mode: only the text, full screen (F11)
 - [x] Filter and sort the shelf
 - [x] Clear message for files that cannot be opened
 

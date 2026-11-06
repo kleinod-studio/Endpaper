@@ -142,6 +142,23 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual(added.path.read_bytes(), b"new")
         self.assertEqual([p.name for p in (self.root / "A").iterdir()], ["neu.epub"])
 
+    def test_reference_works_are_kept_and_move_with_the_book(self):
+        (self.root / "B").mkdir()
+        book = self.book("A/x.epub", "A")
+        library.set_pinned(book, True)
+        library.set_reference(book, True)
+        category = next(c for c in library.scan(self.root) if c.name == "A")
+        self.assertTrue(category.is_reference(category.books[0]) and category.is_pinned(category.books[0]))
+        renamed = library.rename_book(book, "y")
+        self.assertEqual(library.read_reference(self.root / "A"), ["y.epub"])
+        moved = library.move_book(renamed, self.root / "B")
+        self.assertEqual(library.read_reference(self.root / "A"), [])
+        self.assertEqual(library.read_reference(self.root / "B"), ["y.epub"])
+        self.assertEqual(library.read_pins(self.root / "B"), ["y.epub"])
+        library.set_reference(moved, False)
+        self.assertEqual(library.read_reference(self.root / "B"), [])
+        self.assertEqual(library.read_pins(self.root / "B"), ["y.epub"], "the pin stays")
+
     def test_pins_survive_broken_or_foreign_files(self):
         folder = self.root / "A"
         folder.mkdir()

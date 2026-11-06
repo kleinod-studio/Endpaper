@@ -50,9 +50,13 @@ class Category:
     name: str | None  # None: the books directly in the library folder
     books: list[Book] = field(default_factory=list)
     pinned: list[str] = field(default_factory=list)  # file keys, see Book.file_key
+    reference: list[str] = field(default_factory=list)  # books to look things up in, not to read through
 
     def is_pinned(self, book: Book) -> bool:
         return book.file_key in self.pinned
+
+    def is_reference(self, book: Book) -> bool:
+        return book.file_key in self.reference
 
 
 def notes_path_for(book_path: Path) -> Path:
@@ -102,24 +106,41 @@ def _collect_books(folder: Path, category: Path, root: Path, recursive: bool) ->
     return books
 
 
-def read_pins(folder: Path) -> list[str]:
+def _read_list(folder: Path, name: str) -> list[str]:
     try:
         data = json.loads((folder / SHELF_FILE).read_text(encoding="utf-8"))
-        pinned = data.get("pinned", [])
+        items = data.get(name, [])
     except (OSError, ValueError, AttributeError):
         return []
-    return [item for item in pinned if isinstance(item, str)] if isinstance(pinned, list) else []
+    return [item for item in items if isinstance(item, str)] if isinstance(items, list) else []
 
 
-def write_pins(folder: Path, pinned: list[str]) -> None:
+def _write_list(folder: Path, name: str, items: list[str]) -> None:
+    """Keeps everything else in the file as it is."""
     file = folder / SHELF_FILE
     try:
         data = json.loads(file.read_text(encoding="utf-8"))
         data = data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         data = {}
-    data["pinned"] = pinned
+    data[name] = items
     atomic_write_text(file, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+
+def read_pins(folder: Path) -> list[str]:
+    return _read_list(folder, "pinned")
+
+
+def write_pins(folder: Path, pinned: list[str]) -> None:
+    _write_list(folder, "pinned", pinned)
+
+
+def read_reference(folder: Path) -> list[str]:
+    return _read_list(folder, "reference")
+
+
+def write_reference(folder: Path, books: list[str]) -> None:
+    _write_list(folder, "reference", books)
 
 
 def scan(root: Path) -> list[Category]:
@@ -127,7 +148,7 @@ def scan(root: Path) -> list[Category]:
     result = []
     loose = _collect_books(root, root, root, False)
     if loose:
-        result.append(Category(root, None, loose, read_pins(root)))
+        result.append(Category(root, None, loose, read_pins(root), read_reference(root)))
     folders = []
     try:
         for entry in os.scandir(root):
@@ -136,7 +157,8 @@ def scan(root: Path) -> list[Category]:
     except OSError:
         return result
     for folder in sorted(folders, key=lambda p: p.name.casefold()):
-        result.append(Category(folder, folder.name, _collect_books(folder, folder, root, True), read_pins(folder)))
+        result.append(Category(
+            folder, folder.name, _collect_books(folder, folder, root, True), read_pins(folder), read_reference(folder)))
     return result
 
 
@@ -221,22 +243,27 @@ def _move_book_files(book: Book, target: Path) -> None:
         raise
 
 
-def _unpin(category: Path, key: str) -> bool:
-    pins = read_pins(category)
-    if key not in pins:
+# What the category file says about a book: whether it is pinned, and whether it is a reference work.
+_BOOK_LISTS = ("pinned", "reference")
+
+
+def _take_out(category: Path, name: str, key: str) -> bool:
+    items = _read_list(category, name)
+    if key not in items:
         return False
-    write_pins(category, [p for p in pins if p != key])
+    _write_list(category, name, [item for item in items if item != key])
     return True
 
 
 def move_book(book: Book, category: Path) -> Book:
-    """Moves a book to the top level of a category. A pin moves along."""
+    """Moves a book to the top level of a category. Its pin and the mark as reference work move along."""
     moved = Book(category / book.path.name, category)
     if moved.path == book.path:
         return book
     _move_book_files(book, moved.path)
-    if _unpin(book.category, book.file_key):
-        write_pins(category, read_pins(category) + [moved.file_key])
+    for name in _BOOK_LISTS:
+        if _take_out(book.category, name, book.file_key):
+            _write_list(category, name, _read_list(category, name) + [moved.file_key])
     return moved
 
 
@@ -249,9 +276,10 @@ def rename_book(book: Book, name: str) -> Book:
     if renamed.path == book.path:
         return book
     _move_book_files(book, renamed.path)
-    pins = read_pins(book.category)
-    if book.file_key in pins:
-        write_pins(book.category, [renamed.file_key if p == book.file_key else p for p in pins])
+    for name in _BOOK_LISTS:
+        items = _read_list(book.category, name)
+        if book.file_key in items:
+            _write_list(book.category, name, [renamed.file_key if item == book.file_key else item for item in items])
     return renamed
 
 
@@ -269,6 +297,13 @@ def set_pinned(book: Book, pinned: bool) -> None:
     if pinned:
         pins.append(book.file_key)
     write_pins(book.category, pins)
+
+
+def set_reference(book: Book, reference: bool) -> None:
+    books = [key for key in read_reference(book.category) if key != book.file_key]
+    if reference:
+        books.append(book.file_key)
+    write_reference(book.category, books)
 
 
 def trash_paths_for_book(book: Book) -> list[Path]:

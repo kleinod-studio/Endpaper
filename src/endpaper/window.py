@@ -1,8 +1,8 @@
 from gettext import gettext as _
 
-from gi.repository import Adw, Gio, Gtk
+from gi.repository import Adw, Gio, GLib, Gtk
 
-from . import config
+from . import config, library
 from .shelf import ShelfPage
 
 
@@ -62,6 +62,36 @@ class EndpaperWindow(Adw.ApplicationWindow):
             if reader_only:
                 self.reader_actions.append(action)
         self.shelf_actions = [self.lookup_action(n) for n in ("new-category", "add-books")]
+        focus = Gio.SimpleAction.new_stateful("focus-mode", None, GLib.Variant.new_boolean(False))
+        focus.connect("change-state", self._on_focus_mode)
+        self.add_action(focus)
+        self.reader_actions.append(focus)
+        self._before_focus = (False, False, False)  # table of contents, notes, full screen: to restore afterwards
+        # Leaving full screen in another way, such as with the window manager, ends focus mode too.
+        self.connect("notify::fullscreened", self._on_fullscreened)
+
+    def _on_focus_mode(self, action, value):
+        on = value.get_boolean()
+        if on == action.get_state().get_boolean() or (on and self.navigation.get_visible_page() is not self.reader):
+            return
+        action.set_state(value)
+        if on:
+            self._before_focus = (
+                self.reader.toc_button.get_active(), self.reader.notes_button.get_active(), self.is_fullscreen())
+            self.reader.set_focus_mode(True)
+            self.fullscreen()
+        else:
+            toc, notes, was_fullscreen = self._before_focus
+            self.reader.set_focus_mode(False)
+            self.reader.toc_button.set_active(toc)
+            self.reader.notes_button.set_active(notes)
+            if not was_fullscreen and self.is_fullscreen():
+                self.unfullscreen()
+
+    def _on_fullscreened(self, *_args):
+        if not self.is_fullscreen() and self.lookup_action("focus-mode").get_state().get_boolean():
+            self._before_focus = (*self._before_focus[:2], False)
+            self.lookup_action("focus-mode").change_state(GLib.Variant.new_boolean(False))
 
     def _update_actions(self):
         reading = self.navigation.get_visible_page() is not self.shelf
@@ -87,11 +117,13 @@ class EndpaperWindow(Adw.ApplicationWindow):
             self.reader.close_book()  # the last book, when its page has not finished sliding away yet
         # The page comes first: laying out a book needs the size of the finished view.
         self.navigation.push(self.reader)
-        self.reader.open_book(book.path, info.key, info.title, goal)
+        reference = book.file_key in library.read_reference(book.category)
+        self.reader.open_book(book.path, info.key, info.title, goal, reference)
         self.reader.focus_text()
 
     def _on_popped(self, _view, page):
         if page is self.reader and self.navigation.get_visible_page() is not self.reader:
+            self.lookup_action("focus-mode").change_state(GLib.Variant.new_boolean(False))
             self.reader.close_book()
             self.shelf.refresh_progress()
 
@@ -159,6 +191,8 @@ class EndpaperWindow(Adw.ApplicationWindow):
             (_("Larger Text"), "<Primary>plus"),
             (_("Smaller Text"), "<Primary>minus"),
             (_("Normal Text Size"), "<Primary>0"),
+            (_("Focus Mode"), "F11 <Primary><Shift>Return"),
+            (_("Leave Focus Mode"), "Escape"),
             (_("Back to the Shelf"), "<Alt>Left"),
         ):
             reading.add(Adw.ShortcutsItem.new(title, accel))

@@ -20,6 +20,7 @@ from . import config
 from .notes import DEFAULT_MARK_COLOR, MARK_COLORS, NotesError, NotesFile, NotesKept
 from .indexer import install_note_tints, parts_markup
 from .notes_panel import NotesPanel
+from .progress_ring import ProgressRing, install_css as install_ring_css
 
 WEB_DIR = Path(__file__).parent / "web"
 BOOK_PATH = "book"
@@ -30,6 +31,9 @@ SAVE_DELAY_MS = 1500
 ANSWER_SAVE_DELAY_MS = 500
 # The notes flyout, normal and doubled: never narrower than the first number, never wider than the last.
 NOTES_MIN_WIDTH = 300
+BAR_BOTTOM = 18  # the bar below the text and the progress card stand this far from the bottom
+EDGE = 8  # px from the top at which the hidden header bar comes back in focus mode
+EDGE_LEAVE = 120  # and how far away the mouse has to go for it to hide again
 NOTES_WIDTH = (0.3, 420)
 NOTES_WIDE_WIDTH = (0.6, 840)
 
@@ -92,7 +96,8 @@ def _install_css() -> None:
             border-radius: 12px;
             box-shadow: 0 0 0 1px alpha(currentColor, 0.1), 0 3px 10px alpha(black, 0.2);
         }
-        .mark-bar > viewport > box { padding: 3px 6px; }
+        /* As high as the progress card beside it, and level with it, as the bars in Typecase. */
+        .mark-bar > viewport > box { padding: 7px 8px; }
         menubutton.mark-choice > button { min-width: 26px; min-height: 26px; padding: 0; }
         button.theme-choice {
             min-width: 40px;
@@ -168,6 +173,10 @@ class ReaderPage(Adw.NavigationPage):
         self._save_timer = 0
         self._last_toc_href = None
         self.on_opened = None  # for tests
+        self.reference = False
+        self.focus_mode = False  # only the text, full screen; the window switches it (win.focus-mode)
+        self.narrow = False
+        self._progress_wanted = False
         self._opening = 0  # counts the books opened, so that what the page says belongs to the book it is about
         self._goal: dict | None = None  # where the library search leads in the book being opened
         self._near: dict | None = None  # the passage whose result the next search should go to
@@ -186,6 +195,9 @@ class ReaderPage(Adw.NavigationPage):
         header.pack_start(self.back_button)
 
         menu = Gio.Menu()
+        view = Gio.Menu()
+        view.append(_("Focus Mode"), "win.focus-mode")
+        menu.append_section(None, view)
         menu.append(_("Keyboard Shortcuts"), "win.show-shortcuts")
         menu.append(_("About Endpaper"), "app.about")
         self.menu_button = Gtk.MenuButton(icon_name="open-menu-symbolic", tooltip_text=_("Main Menu"), menu_model=menu, primary=True)
@@ -227,6 +239,11 @@ class ReaderPage(Adw.NavigationPage):
 
         content = Adw.ToolbarView(content=self.overlay)
         content.add_top_bar(header)
+        self.content_view = content
+        # In focus mode the bars come back when the mouse reaches the edge they belong to, as in Typecase.
+        motion = Gtk.EventControllerMotion()
+        motion.connect("motion", self._on_content_motion)
+        content.add_controller(motion)
         self.sidebar_title = Adw.WindowTitle(title=_("Table of Contents"))
         self.split = Adw.OverlaySplitView(sidebar=self._sidebar_page(self.sidebar_title, sidebar), content=content, show_sidebar=False)
         self.toc_button.bind_property(
@@ -234,7 +251,9 @@ class ReaderPage(Adw.NavigationPage):
         )
         _install_css()
         install_note_tints()
-        self.overlay.add_overlay(self._build_mark_bar())
+        self.mark_bar = self._build_mark_bar()
+        self.overlay.add_overlay(self.mark_bar)
+        self.overlay.add_overlay(self._build_progress_badge())
         self.mark_popover = self._build_mark_popover()
         escape = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
         escape.connect("key-pressed", self._on_key)
@@ -327,7 +346,7 @@ class ReaderPage(Adw.NavigationPage):
         box.append(self.mark_done)
         # Scrollable sideways in a narrow window, instead of making the page wider.
         return Gtk.ScrolledWindow(
-            css_classes=["mark-bar"], child=box, halign=Gtk.Align.CENTER, valign=Gtk.Align.END, margin_bottom=8,
+            css_classes=["mark-bar"], child=box, halign=Gtk.Align.CENTER, valign=Gtk.Align.END, margin_bottom=BAR_BOTTOM,
             margin_start=12, margin_end=12, hscrollbar_policy=Gtk.PolicyType.AUTOMATIC,
             vscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_width=True, propagate_natural_height=True,
         )
@@ -380,6 +399,7 @@ class ReaderPage(Adw.NavigationPage):
         placing = self.bookmark_button.get_active()
         self.mark_done.set_visible(marking or placing)
         self.mark_hint.set_visible(marking or placing)
+        self._update_bottom()
         if placing:
             self.mark_hint.set_label(_("Click the paragraph for the bookmark."))
             return
@@ -439,6 +459,15 @@ class ReaderPage(Adw.NavigationPage):
             if in_notes:
                 self.notes_panel.flush()
                 self.notes_button.set_active(False)
+                return True
+            if self.focus_mode and not (focus is not None and focus.is_ancestor(self.search_entry)):
+                # A popup over the text goes first, as everywhere: Esc closes what was opened last.
+                def leave(visible):
+                    if visible:
+                        self._js("endpaper.peekHide()")
+                    elif self.focus_mode and (window := self.get_root()) is not None:
+                        window.lookup_action("focus-mode").change_state(GLib.Variant.new_boolean(False))
+                self._js("endpaper.peekState()?.visible ?? false", leave)
                 return True
             return False
         if not self.marking or self._in_field or (focus is not None and focus is not self.web):
@@ -822,6 +851,71 @@ class ReaderPage(Adw.NavigationPage):
             except NotesError:
                 self._save_failed()
 
+    def _build_progress_badge(self) -> Gtk.Button:
+        """How far the book has been read, in the corner: the same ring as the writing goal in Typecase.
+        A click shows the table of contents, to see where in the book that is."""
+        install_ring_css()
+        self.progress_ring = ProgressRing(20, 3.5)
+        self.progress_label = Gtk.Label(css_classes=["numeric", "caption-heading"])
+        box = Gtk.Box(spacing=8)
+        box.append(self.progress_ring)
+        box.append(self.progress_label)
+        self.progress_badge = Gtk.Button(
+            child=box, halign=Gtk.Align.END, valign=Gtk.Align.END, margin_end=BAR_BOTTOM, margin_bottom=BAR_BOTTOM, visible=False,
+            tooltip_text=_("Reading Progress"), css_classes=["progress-badge"], focus_on_click=False,
+        )
+        self.progress_badge.connect("clicked", lambda _b: self.toc_button.set_active(not self.toc_button.get_active()))
+        return self.progress_badge
+
+    def _show_progress(self, fraction: float | None):
+        if self.reference or fraction is None:
+            self._progress_wanted = False
+            self._update_bottom()
+            return
+        animate = self.progress_badge.get_visible()
+        self.progress_label.set_label(_("{percent}%").format(percent=round(fraction * 100)))
+        self.progress_badge.update_property(
+            [Gtk.AccessibleProperty.LABEL], [f"{_('Reading Progress')}: {self.progress_label.get_label()}"])
+        self.progress_ring.show_progress(fraction, animate)
+        self._progress_wanted = True
+        self._update_bottom()
+
+    # --- Focus mode ---------------------------------------------------------------------------
+
+    def set_focus_mode(self, on: bool) -> None:
+        """Only the text and the bar below it: the header bar comes back while the mouse is at the top edge.
+        Reading, marking and notes work as before; a sidebar opened on purpose shows here too."""
+        if on == self.focus_mode:
+            return
+        self.focus_mode = on
+        if on:
+            self.toc_button.set_active(False)
+            self.notes_button.set_active(False)
+        for split in (self.split, self.notes_split):
+            split.set_pin_sidebar(on)  # otherwise libadwaita opens them again when the window grows to full screen
+        self.content_view.set_extend_content_to_top_edge(on)  # the header bar lies over the text
+        self.content_view.set_reveal_top_bars(not on)
+        self._update_page_buttons()
+        if self.opened:
+            self._js(f"endpaper.setFocus({json.dumps(on)})")  # wider, with more room above and below
+        self.focus_text()
+
+    def _update_page_buttons(self):
+        for button in (self.prev_button, self.next_button):
+            button.set_visible(not self.narrow and not self.focus_mode)
+
+    def _update_bottom(self):
+        self.progress_badge.set_visible(self._progress_wanted)
+
+    def _on_content_motion(self, _controller, _x, y):
+        if not self.focus_mode:
+            return
+        if y < EDGE:
+            self.content_view.set_reveal_top_bars(True)
+        elif y > EDGE_LEAVE and not self.menu_button.get_active() and not self.search_entry.has_focus():
+            self.content_view.set_reveal_top_bars(False)
+
+
     def _page_button(self, icon, label, align, script):
         button = Gtk.Button(icon_name=icon, tooltip_text=label, halign=align, valign=Gtk.Align.CENTER)
         button.set_margin_start(12)
@@ -834,8 +928,8 @@ class ReaderPage(Adw.NavigationPage):
 
     def set_narrow(self, narrow: bool) -> None:
         """In a narrow window the text needs all the room."""
-        self.prev_button.set_visible(not narrow)
-        self.next_button.set_visible(not narrow)
+        self.narrow = narrow
+        self._update_page_buttons()
         for split in (self.split, self.notes_split):
             # Without this a sidebar pops open whenever the window becomes wide again.
             if narrow and not split.get_collapsed():
@@ -1164,9 +1258,13 @@ class ReaderPage(Adw.NavigationPage):
 
     # --- Book ---------------------------------------------------------------------------
 
-    def open_book(self, path: Path, key: str, title: str, goal: dict | None = None) -> None:
-        """goal: a place found by the library search, {"query", "section", "path"}, or only a query."""
+    def open_book(self, path: Path, key: str, title: str, goal: dict | None = None, reference: bool = False) -> None:
+        """goal: a place found by the library search, {"query", "section", "path"}, or only a query.
+        reference: a book to look things up in, which shows no progress."""
         self.book_path, self.book_key = path, key
+        self.reference = reference
+        self._progress_wanted = False
+        self._update_bottom()
         self._opening += 1
         self._goal = goal
         self.opened = False
@@ -1212,10 +1310,8 @@ class ReaderPage(Adw.NavigationPage):
             self.state.set_position(self.book_key, message["cfi"], message["fraction"], time.time())
             if not self._save_timer:
                 self._save_timer = GLib.timeout_add(SAVE_DELAY_MS, self._save_state)
-        percent = round(message["fraction"] * 100)
-        progress = _("{percent}%").format(percent=percent)
-        chapter = message.get("tocLabel")
-        self.window_title.set_subtitle(f"{chapter} · {progress}" if chapter else progress)
+        self._show_progress(message["fraction"])
+        self.window_title.set_subtitle(message.get("tocLabel") or "")
         self.back_button.set_visible(bool(message.get("canGoBack")))
         self._highlight_toc(message.get("tocHref"))
 

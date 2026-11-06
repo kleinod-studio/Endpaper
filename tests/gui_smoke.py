@@ -31,7 +31,7 @@ import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Graphene", "1.0")
-from gi.repository import Adw, GLib, Graphene, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, GLib, Graphene, Gtk  # noqa: E402
 
 from endpaper import config, library  # noqa: E402
 from endpaper.main import EndpaperApplication  # noqa: E402
@@ -228,6 +228,12 @@ def scenario(app, window):
     check(wait_for(lambda: "Chapter 3" in js(reader, "endpaper.diagnostics()")["visibleText"]), "the table of contents jumps")
     check(wait_for(lambda: reader.toc_list.get_selected_row() is row), "the current chapter is highlighted")
     check(wait_for(lambda: "Chapter 3" in reader.window_title.get_subtitle()), "the title shows the chapter")
+    check("%" not in reader.window_title.get_subtitle(), "but not how far the book has been read")
+    check(reader.progress_badge.get_visible() and reader.progress_label.get_label().endswith("%")
+          and reader.progress_ring.value > 0, f"that is in the corner, with a ring ({reader.progress_label.get_label()})")
+    reader.toc_button.set_active(False)
+    reader.progress_badge.emit("clicked")
+    check(reader.toc_button.get_active(), "and a click on it shows the table of contents")
 
     print("Links")
     js(reader, "endpaper.clickLink(0)")
@@ -254,6 +260,38 @@ def scenario(app, window):
     check(not reader.next_button.get_visible() and reader.split.get_collapsed(), "a narrow window gives the text the room")
     window._set_narrow(False)
     check(not reader.notes_split.get_show_sidebar(), "a wider window does not open the flyout by itself")
+
+    print("Focus mode")
+    renderer = "document.querySelector('foliate-view').renderer"
+    width_before = js(reader, f"{renderer}.getAttribute('max-inline-size')")
+    bar, card = reader.mark_bar.compute_bounds(reader.overlay)[1], reader.progress_badge.compute_bounds(reader.overlay)[1]
+    check(abs(bar.get_height() - card.get_height()) < 1 and abs(bar.get_y() + bar.get_height() - card.get_y() - card.get_height()) < 1,
+          f"the bar below the text and the progress card are level ({bar.get_y()}+{bar.get_height()}, {card.get_y()}+{card.get_height()})")
+    text_bottom = reader.overlay.get_height() - int(js(reader, f"parseFloat({renderer}.getAttribute('margin'))"))
+    check(bar.get_y() >= text_bottom, f"and leave the text free ({bar.get_y()} below {text_bottom})")
+    focus_mode = window.lookup_action("focus-mode")
+    reader.toc_button.set_active(True)
+    focus_mode.change_state(GLib.Variant.new_boolean(True))
+    check(wait_for(lambda: window.is_fullscreen(), 5), "focus mode fills the screen")
+    check(not reader.content_view.get_reveal_top_bars() and not reader.split.get_show_sidebar(), "without header bar and sidebar")
+    check(not reader.next_button.get_visible(), "and without the page buttons")
+    check(reader.mark_bar.get_visible() and reader.progress_badge.get_visible(), "the bar below the text stays, to mark")
+    check(wait_for(lambda: js(reader, f"{renderer}.getAttribute('max-inline-size')") != width_before, 3),
+          "the text spreads wider")
+    check(wait_for(lambda: reader.content_view.get_height() > 400, 5), f"laid out ({reader.content_view.get_height()})")
+    height = reader.content_view.get_height()
+    reader._on_content_motion(None, 300, 2)
+    check(reader.content_view.get_reveal_top_bars(), "the header bar comes back at the top edge")
+    reader._on_content_motion(None, 300, height / 2)
+    check(not reader.content_view.get_reveal_top_bars(), "and goes again")
+    reader.web.grab_focus()
+    reader._on_key(None, 0xff1b, 0, 0)  # Escape
+    check(wait_for(lambda: not focus_mode.get_state().get_boolean() and not window.is_fullscreen(), 5), "Esc ends focus mode")
+    check(reader.content_view.get_reveal_top_bars() and reader.next_button.get_visible() and reader.mark_bar.get_visible(),
+          "and everything is back")
+    check(wait_for(lambda: js(reader, f"{renderer}.getAttribute('max-inline-size')") == width_before, 3), "the text as wide as before")
+    check(wait_for(lambda: reader.split.get_show_sidebar(), 3), "the table of contents too, as it was open before")
+    reader.toc_button.set_active(False)
 
     print("Sidebars")
     reader.toc_button.set_active(True)
@@ -338,6 +376,23 @@ def scenario(app, window):
     check(wait_for(lambda: js(reader, "endpaper.diagnostics()")["cfi"] == position), "the book opens at the old place")
     window.navigation.pop()
     wait_for(lambda: not reader.opened)
+    check(wait_for(lambda: delta.progress.get_visible()) and delta.ring.value > 0, "the cover shows how far it has been read")
+
+    print("Reference works")
+    shelf.toggle_reference(delta)
+    check(wait_for(lambda: delta.reference), "a book can be marked as a reference work")
+    check(library.read_reference(studium) == ["d.epub"], "the mark is kept in the category folder")
+    check(not delta.progress.get_visible(), "it shows no progress on the shelf")
+    menu = shelf.book_menu(delta).get_item_link(0, "section")
+    check(menu.get_item_attribute_value(2, "label").get_string() == "No Longer a Reference Work", "the menu can take it back")
+    shelf.open_card(delta)
+    wait_for(lambda: reader.opened)
+    spin(0.5)
+    check(not reader.progress_badge.get_visible(), "nor in the book")
+    window.navigation.pop()
+    wait_for(lambda: not reader.opened)
+    shelf.toggle_reference(delta)
+    check(wait_for(lambda: not delta.reference) and delta.progress.get_visible(), "without the mark, the progress is back")
 
     print("Bad positions and files")
     state.books[delta.info.key]["cfi"] = "epubcfi(/6/999!/4/2)"

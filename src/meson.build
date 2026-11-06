@@ -16,6 +16,7 @@ install_data(
     'endpaper/markdown_view.py',
     'endpaper/notes.py',
     'endpaper/notes_panel.py',
+    'endpaper/progress_ring.py',
     'endpaper/reader_view.py',
     'endpaper/shelf.py',
     'endpaper/window.py',

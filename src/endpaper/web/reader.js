@@ -38,6 +38,11 @@ const THEMES = {
 }
 const LINE_HEIGHT = { compact: 1.3, normal: 1.5, relaxed: 1.8 }
 const TEXT_WIDTH = { narrow: 520, normal: 640, wide: 800 }
+const MARGIN = 72 // above and below the text: room for the bar below it, which must never cover a line
+// Focus mode fills the screen: more room above and below, and the columns spread wider instead.
+const FOCUS_MARGIN_SHARE = 0.1
+const FOCUS_WIDTH_FACTOR = 1.25
+let focus = false
 // Two pages side by side only where each still has comfortable lines, also with larger text.
 const MIN_SPREAD_COLUMN = 400
 const SPREAD_COLUMN_SHARE = 0.395 // of the view's width: what margins and the gap leave for one of two columns
@@ -99,6 +104,9 @@ const css = () => {
     `
 }
 
+const textWidth = () => Math.round(TEXT_WIDTH[settings.width] * (focus ? FOCUS_WIDTH_FACTOR : 1))
+const margin = () => `${focus ? Math.max(MARGIN, Math.round(window.innerHeight * FOCUS_MARGIN_SHARE)) : MARGIN}px`
+
 const columnCount = () => {
     if (settings.flow !== 'paginated') return 1
     const wanted = Math.max(MIN_SPREAD_COLUMN, TEXT_WIDTH[settings.width] * 0.65) * Math.max(1, settings.font_size / 100)
@@ -112,11 +120,11 @@ const applyLayout = () => {
     if (!view?.renderer) return
     const r = view.renderer
     r.setAttribute('flow', settings.flow)
-    r.setAttribute('margin', '60px') // room for the marking bar
+    r.setAttribute('margin', margin())
     r.setAttribute('gap', '7%')
     r.setAttribute('max-column-count', String(columnCount()))
     r.setAttribute('max-block-size', '100000px')
-    r.setAttribute('max-inline-size', `${TEXT_WIDTH[settings.width]}px`) // lays out the pages anew
+    r.setAttribute('max-inline-size', `${textWidth()}px`) // lays out the pages anew
     r.setStyles?.(css())
     for (const { doc } of r.getContents?.() ?? []) if (doc) adaptColors(doc)
 }
@@ -174,7 +182,9 @@ document.addEventListener('wheel', onWheel, { passive: false })
 
 window.addEventListener('resize', () => {
     const r = view?.renderer
-    if (!r || r.getAttribute('max-column-count') === String(columnCount())) return
+    if (!r) return
+    if (r.getAttribute('margin') !== margin()) r.setAttribute('margin', margin()) // in focus mode it follows the height
+    if (r.getAttribute('max-column-count') === String(columnCount())) return
     r.setAttribute('max-column-count', String(columnCount()))
     r.render()
 })
@@ -236,6 +246,10 @@ window.endpaper = {
     },
     applySettings(nextSettings) {
         settings = nextSettings
+        applyLayout()
+    },
+    setFocus(on) {
+        focus = on
         applyLayout()
     },
     goToHref: href => view?.goTo(href),

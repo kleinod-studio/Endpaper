@@ -420,6 +420,7 @@ export const createMarks = (view, post) => {
             await view.deleteAnnotation({ value: cfi }).catch(() => {})
         },
         get marking() { return marking },
+        get list() { return [...marks.values()] },
         get pending() { return Boolean(pending) },
         get cursor() {
             return cursor ? { text: cursor.toString(), onScreen: onScreen(cursor) } : null

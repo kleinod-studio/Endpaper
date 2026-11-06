@@ -116,6 +116,18 @@ export const createFields = (view, post) => {
     }
 
     return {
+        // From the search: the field with this key, brought onto the page and given the focus.
+        async goTo(key) {
+            const section = key.slice(0, key.indexOf('#'))
+            const index = view.book.sections.findIndex(candidate => candidate.id === section)
+            if (index < 0) return
+            await view.goTo(index)
+            const doc = view.renderer.getContents().find(content => content.index === index)?.doc
+            const item = doc && fieldsIn.get(doc)?.find(candidate => candidate.key === key)
+            if (!item) return
+            await view.renderer.scrollToAnchor(item.element)
+            item.element.focus({ preventScroll: true })
+        },
         attach(doc, index) {
             const section = view.book.sections[index]?.id ?? String(index)
             const items = fieldsOf(doc, section)

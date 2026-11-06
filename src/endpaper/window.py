@@ -76,6 +76,8 @@ class EndpaperWindow(Adw.ApplicationWindow):
             self.reader.set_narrow(narrow)
 
     def open_book(self, book, info):
+        if self.reader is not None and self.navigation.get_visible_page() is self.reader:
+            return  # a second activation, such as a quick double click, while the book is already open
         if self.reader is None:
             from .reader_view import ReaderPage  # the web engine loads only when it is needed
 

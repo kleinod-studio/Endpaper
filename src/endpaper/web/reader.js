@@ -189,7 +189,7 @@ window.endpaper = {
             fields = createFields(view, post)
             bookmarks = createBookmarks(view, post)
             pictures = createPictures(view, post, { isBusy: () => marks.marking || bookmarks.placing })
-            search = createSearch(view, post)
+            search = createSearch(view, post, { marks: () => marks.list })
             peek = createPeek(view, {
                 theme: () => THEMES[settings.theme],
                 isMarking: () => marks.marking,
@@ -233,9 +233,10 @@ window.endpaper = {
         applyLayout()
     },
     goToHref: href => view?.goTo(href),
-    search(query, run) { search?.start(query, run) },
+    search(query, run, extras) { search?.start(query, run, extras) },
     stopSearch() { search?.stop() },
     goToFound(cfi) { search?.goTo(cfi) },
+    goToField(key) { fields?.goTo(key) },
     next: () => view?.next(),
     prev: () => view?.prev(),
     back: () => view?.history.back(),
@@ -328,6 +329,18 @@ window.endpaper = {
             border: style.borderLeftColor,
             inline: element.getAttribute('style'),
         }
+    },
+    // A mark over the whole text of an element, as one made with the mouse would be.
+    textAnchor: id => {
+        const content = view.renderer.getContents()[0]
+        const element = content.doc.getElementById(id)
+        const walker = content.doc.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+        const texts = []
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) texts.push(node)
+        const range = content.doc.createRange()
+        range.setStart(texts[0], 0)
+        range.setEnd(texts.at(-1), texts.at(-1).nodeValue.length)
+        return view.getCFI(content.index, range)
     },
     selectionAnchor: id => {
         const content = view.renderer.getContents()[0]

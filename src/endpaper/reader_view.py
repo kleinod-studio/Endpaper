@@ -124,19 +124,6 @@ def _install_css() -> None:
     Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
 
-def _whole_words(before: str, after: str) -> tuple[str, str]:
-    """The excerpt around a search result, cut off at whole words instead of in the middle of one."""
-    if before.startswith("…"):
-        _cut, space, rest = before[1:].partition(" ")
-        if space and rest:
-            before = "… " + rest
-    if after.endswith("…"):
-        rest, space, _cut = after[:-1].rpartition(" ")
-        if space and rest.strip():
-            after = rest + " …"
-    return before, after
-
-
 def _web_context() -> WebKit.WebContext:
     # WebKit holds on to what it could free until it feels pressure: by default above 1 to 1.5 GB,
     # checked every 30 seconds. Paging through a long book with pictures gets there fast and,
@@ -1317,7 +1304,8 @@ class ReaderPage(Adw.NavigationPage):
         self.sidebar_pages.set_visible_child_name("results")
         self.search_status.set_label(_("Searching…"))
         self.search_status.set_visible(True)
-        self._js(f"endpaper.search({json.dumps(query)}, {self._search_run})")
+        own = self.notes.search(query) if self.notes else []
+        self._js(f"endpaper.search({json.dumps(query)}, {self._search_run}, {json.dumps(own)})")
 
     def _end_search(self):
         if self.search_entry.get_text():
@@ -1358,18 +1346,63 @@ class ReaderPage(Adw.NavigationPage):
                 self.search_status.set_visible(False)
                 self.sidebar_pages.set_visible_child_name("nothing")
 
+    @staticmethod
+    def _parts_markup(parts: list[dict]) -> str:
+        """An excerpt with the found word in bold and the reader's marks in their color, as in the book."""
+        out = []
+        for part in parts:
+            text = GLib.markup_escape_text(part.get("text") or "")
+            if part.get("word"):
+                text = f"<b>{text}</b>"
+            color = part.get("color")
+            if color and re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+                text = (
+                    f'<span underline="single" underline_color="{color}">{text}</span>' if part.get("underline")
+                    else f'<span background="{color}" bgalpha="45%">{text}</span>'
+                )
+            out.append(text)
+        return "".join(out)
+
     def _result_row(self, chapter: str, item: dict) -> Gtk.ListBoxRow:
-        escape = GLib.markup_escape_text
-        before, after = _whole_words(item["pre"], item["post"])
+        kind = item.get("kind", "text")
         label = Gtk.Label(
             xalign=0, wrap=True, wrap_mode=2, lines=3, ellipsize=3, use_markup=True,
-            label=f"{escape(before)}<b>{escape(item['match'])}</b>{escape(after)}",
+            label=self._parts_markup(item["parts"]),
         )
-        row = Gtk.ListBoxRow(child=label, css_classes=["card", "activatable", "search-row"])
-        row.update_property([Gtk.AccessibleProperty.LABEL], [f"{before}{item['match']}{after}"])
-        row.cfi = item["cfi"]
+        classes = ["card", "activatable", "search-row"]
+        if kind == "text":
+            child = label
+        else:
+            # The reader's own words: a note in the color of its mark, an answer plain.
+            caption = Gtk.Label(
+                label=_("Note") if kind == "note" else _("Your Answer"), xalign=0, css_classes=["caption-heading", "dim-label"]
+            )
+            child = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+            child.append(caption)
+            child.append(label)
+            if kind == "note":
+                color = item.get("color") if item.get("color") in MARK_COLORS else DEFAULT_MARK_COLOR
+                classes.append(f"note-tint-{color}")
+        row = Gtk.ListBoxRow(child=child, css_classes=classes)
+        words = "".join(part.get("text") or "" for part in item["parts"])
+        row.update_property([Gtk.AccessibleProperty.LABEL], [words if kind == "text" else f"{caption.get_label()}: {words}"])
+        row.kind = kind
+        row.cfi = item.get("cfi")
+        row.entry = item.get("entry")
+        row.field = item.get("field")
         row.chapter = chapter
         return row
+
+    def _go_to_result(self, row, stay_in_search: bool = False):
+        if row.kind == "answer":
+            self._js(f"endpaper.goToField({json.dumps(row.field)})")
+            return
+        self._js(f"endpaper.goToFound({json.dumps(row.cfi)})")
+        if row.kind == "note":
+            self.show_mark_notes(row.entry)
+            if stay_in_search:
+                # The entry hands its focus on to its inner text, which can keep the words unselected.
+                self.search_entry.get_delegate().grab_focus_without_selecting()
 
     @staticmethod
     def _result_header(row, before):
@@ -1379,7 +1412,7 @@ class ReaderPage(Adw.NavigationPage):
             row.set_header(Gtk.Label(label=row.chapter, xalign=0, wrap=True, css_classes=["heading", "search-chapter"]))
 
     def _on_result_row(self, _list, row):
-        self._js(f"endpaper.goToFound({json.dumps(row.cfi)})")
+        self._go_to_result(row)
         if self.split.get_collapsed():
             self.split.set_show_sidebar(False)
             self.web.grab_focus()
@@ -1397,7 +1430,7 @@ class ReaderPage(Adw.NavigationPage):
         if known:
             top = bounds.get_y()
             self.result_scroll.get_vadjustment().clamp_page(top, top + bounds.get_height())
-        self._js(f"endpaper.goToFound({json.dumps(row.cfi)})")
+        self._go_to_result(row, stay_in_search=True)
 
     def toggle_toc(self):
         self.toc_button.set_active(not self.toc_button.get_active())

@@ -40,6 +40,7 @@ import copy
 import hashlib
 import re
 import secrets
+import unicodedata
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -528,6 +529,53 @@ def _apply_remove_note(blocks: list, base: Entry, note_id: str, old_text: str) -
         current.notes.remove(note)  # what was changed elsewhere meanwhile stays
 
 
+# --- Search -----------------------------------------------------------------------------------
+
+EXCERPT_CONTEXT = 50  # characters on either side of the word
+
+
+def _folded(text: str) -> tuple[str, list[int]]:
+    """The text without case and accents, so that "Noomi" finds "noomí", with the place of each character."""
+    out, places = [], []
+    for place, char in enumerate(text):
+        base = "".join(c for c in unicodedata.normalize("NFD", char) if not unicodedata.combining(c)).casefold()
+        out.append(base)
+        places.extend([place] * len(base))
+    return "".join(out), places
+
+
+def find_in_text(text: str, query: str) -> tuple[int, int] | None:
+    """Where the query first stands in the text, as start and end, ignoring case and accents."""
+    haystack, places = _folded(text)
+    needle = _folded(query.strip())[0]
+    found = haystack.find(needle) if needle else -1
+    if found < 0:
+        return None
+    return places[found], places[found + len(needle) - 1] + 1
+
+
+def readable(markdown: str) -> str:
+    """A note as it reads, without the signs of Markdown."""
+    text = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", markdown)
+    text = re.sub(r"(?m)^\s*(#{1,6}|>|[-*+]|\d+\.)\s+", "", text)
+    return re.sub(r"\*\*|__|~~|`|(?<!\w)[*_]|[*_](?!\w)", "", text)
+
+
+def excerpt(text: str, start: int, end: int) -> list[dict]:
+    """The words around a find, cut at whole words, as parts of which one is the found word."""
+    spaced = lambda part: re.sub(r"\s+", " ", part)
+    before = spaced(text[max(0, start - EXCERPT_CONTEXT):start]).lstrip()
+    after = spaced(text[end:end + EXCERPT_CONTEXT]).rstrip()
+    if start > EXCERPT_CONTEXT:
+        _cut, space, rest = before.partition(" ")
+        before = "… " + (rest if space and rest else before)
+    if end + EXCERPT_CONTEXT < len(text):
+        rest, space, _cut = after.rpartition(" ")
+        after = (rest if space and rest.strip() else after) + " …"
+    parts = [{"text": before}, {"text": spaced(text[start:end]), "word": True}, {"text": after}]
+    return [part for part in parts if part["text"]]
+
+
 class NotesFile:
     """The marks of one book. Every change is written at once; a failed write raises NotesError,
     keeps the change in memory and is tried again with the next change, flush() or refresh()."""
@@ -672,6 +720,30 @@ class NotesFile:
     @property
     def answers(self) -> list[Answer]:
         return [b for b in self.blocks if isinstance(b, Answer)]
+
+    def search(self, query: str) -> list[dict]:
+        """The notes and answers in which the query stands, each with an excerpt. Marked text is not searched here:
+        it is part of the book, and the search in the book shows it with its color."""
+        found = []
+        for entry in self.entries:
+            for note in entry.notes:
+                text = readable(note.text)
+                place = find_in_text(text, query)
+                if place:
+                    found.append({
+                        "kind": "note", "cfi": entry.cfi, "entry": entry.id, "note": note.id,
+                        "color": entry.color, "chapter": entry.chapter, "parts": excerpt(text, *place),
+                    })
+        for answer in self.answers:
+            if answer.kind == "check":
+                continue
+            place = find_in_text(answer.text, query)
+            if place:
+                found.append({
+                    "kind": "answer", "field": answer.field, "chapter": answer.chapter,
+                    "parts": excerpt(answer.text, *place),
+                })
+        return found
 
     def set_answer(self, key: str, text: str, question: str = "", chapter: str | None = None, kind: str = "text") -> None:
         """An empty answer takes its block away. Typing has its own undo in the field, so nothing is recorded."""

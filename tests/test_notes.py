@@ -13,7 +13,7 @@ from endpaper import library  # noqa: E402
 from endpaper import markdown_style  # noqa: E402
 from endpaper import notes  # noqa: E402
 from endpaper.library import Book  # noqa: E402
-from endpaper.notes import Entry, Note, NotesError, NotesFile, NotesKept, parse, serialize  # noqa: E402
+from endpaper.notes import Entry, Note, NotesError, NotesFile, NotesKept, excerpt, find_in_text, parse, serialize  # noqa: E402
 
 CFI = "epubcfi(/6/4!/4/2,/1:0,/1:10)"
 
@@ -218,6 +218,31 @@ class NotesFileTest(unittest.TestCase):
 
     def outside(self, change):
         self.path.write_text(change(self.path.read_text(encoding="utf-8")), encoding="utf-8")
+
+    def test_search_finds_notes_and_answers_without_case_or_accents(self):
+        file = self.open()
+        entry = file.add(CFI, "Quote", "About **Noomí** and her *courage*", "Chapter 1", color="green")
+        file.add_note(entry.id, "Nothing to find here")
+        file.set_answer("ch1.xhtml#q1", "She stayed with noomi", "Why?", "Chapter 1")
+        file.set_answer("ch1.xhtml#c1", "[x]", "Tick", "Chapter 1", kind="check")
+        found = file.search("NOOMI")
+        self.assertEqual([item["kind"] for item in found], ["note", "answer"])
+        note, answer = found
+        self.assertEqual((note["cfi"], note["entry"], note["color"], note["chapter"]), (CFI, entry.id, "green", "Chapter 1"))
+        self.assertEqual([p["text"] for p in note["parts"] if p.get("word")], ["Noomí"])
+        self.assertEqual("".join(p["text"] for p in note["parts"]), "About Noomí and her courage", "without Markdown signs")
+        self.assertEqual(answer["field"], "ch1.xhtml#q1")
+        self.assertEqual(file.search("Quote"), [], "marked text is found in the book, not here")
+        self.assertEqual(file.search("x"), [], "tick boxes are not searched")
+
+    def test_search_excerpts_are_cut_at_whole_words(self):
+        text = "word " * 20 + "middle " + "word " * 20
+        start = text.index("middle")
+        parts = excerpt(text, start, start + len("middle"))
+        self.assertTrue(parts[0]["text"].startswith("… word"), parts[0])
+        self.assertTrue(parts[-1]["text"].endswith("word …"), parts[-1])
+        self.assertEqual(find_in_text("Café au lait", "cafe"), (0, 4))
+        self.assertIsNone(find_in_text("Tee", "Kaffee"))
 
     def test_the_file_appears_with_the_first_mark(self):
         file = self.open()

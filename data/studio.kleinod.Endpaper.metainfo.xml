@@ -21,6 +21,7 @@
       <li>Notes in Markdown beside the text, saved as a readable file next to the book</li>
       <li>Bookmarks, answer fields of study editions, and previews of footnotes</li>
       <li>Search in the open book and across the whole library, with other forms of a word</li>
+      <li>Reading progress as a ring, and finished books gathered at the end of the shelf</li>
     </ul>
     <p>Endpaper works completely offline, collects no data, and never changes your books. Books protected by DRM are not supported.</p>
   </description>
@@ -83,6 +84,17 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.4.0" date="2026-11-06">
+      <description>
+        <p>Finished books, and marking made smoother.</p>
+        <ul>
+          <li>Mark a book as finished from the shelf, or when the book asks near its end; finished books also stand together at the end of the shelf</li>
+          <li>A mark over marks that are there already becomes one with them, and keeps all their notes</li>
+          <li>Changing the color while marking keeps the first word</li>
+          <li>Previews of footnotes and references show on hover while marking too</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.3.2" date="2026-11-06">
       <description>
         <p>The interface is in German again when installed from a release file.</p>

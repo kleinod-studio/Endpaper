@@ -4,7 +4,7 @@ A friendly bookshelf and a quiet place to read, for Linux. Built with GTK 4, lib
 
 Your books stay plain `.epub` files in a folder of your choice, with one subfolder for each category: no database, no account, no network access. Endpaper never changes your books.
 
-> **Status:** 0.3.2, an early version for everyday testing. The shelf, reading, marks and notes, and the search work. See the [roadmap](ROADMAP.md).
+> **Status:** 0.4.0, an early version for everyday testing. The shelf, reading, marks and notes, and the search work. See the [roadmap](ROADMAP.md).
 
 ## Features
 
@@ -48,7 +48,7 @@ Endpaper has no network access at all: the Flatpak does not have the permission.
 Download the bundle for your architecture from the [latest release](https://github.com/kleinod-studio/Endpaper/releases/latest) and install it:
 
 ```bash
-flatpak install --user Endpaper-0.3.2-x86_64.flatpak
+flatpak install --user Endpaper-0.4.0-x86_64.flatpak
 ```
 
 Use the `-aarch64` bundle on ARM computers. The GNOME 51 runtime comes from Flathub, which has to be set up once (`flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo`).

@@ -83,6 +83,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.2" date="2026-11-06">
+      <description>
+        <p>The interface is in German again when installed from a release file.</p>
+      </description>
+    </release>
     <release version="0.3.1" date="2026-11-06">
       <description>
         <p>Screenshots for software centers, and a quicker library search with many books.</p>

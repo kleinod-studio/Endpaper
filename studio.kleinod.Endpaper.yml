@@ -4,6 +4,9 @@ runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
 command: endpaper
+# The translations stay in the app: a bundle file carries no separate Locale extension, so without
+# this the interface would be in English for everyone who installs the bundle from a release.
+separate-locales: false
 
 finish-args:
   - --socket=wayland

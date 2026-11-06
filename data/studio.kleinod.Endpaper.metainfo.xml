@@ -24,6 +24,48 @@
     </ul>
     <p>Endpaper works completely offline, collects no data, and never changes your books. Books protected by DRM are not supported.</p>
   </description>
+  <screenshots>
+    <screenshot type="default" environment="gnome">
+      <image>https://kleinod.studio/assets/endpaper/screenshot-light.png</image>
+      <caption>The shelf with categories, pinned books and reading progress</caption>
+    </screenshot>
+    <screenshot environment="gnome">
+      <image>https://kleinod.studio/assets/endpaper/screenshot-notes-light.png</image>
+      <caption>Marks in five colors and notes in Markdown beside the text</caption>
+    </screenshot>
+    <screenshot environment="gnome">
+      <image>https://kleinod.studio/assets/endpaper/screenshot-search-light.png</image>
+      <caption>Search in the open book, with your own notes among the results</caption>
+    </screenshot>
+    <screenshot environment="gnome">
+      <image>https://kleinod.studio/assets/endpaper/screenshot-focus-light.png</image>
+      <caption>Focus mode: only the text</caption>
+    </screenshot>
+    <screenshot environment="gnome">
+      <image>https://kleinod.studio/assets/endpaper/screenshot-library-search-light.png</image>
+      <caption>Search across the whole library, with covers and excerpts</caption>
+    </screenshot>
+    <screenshot environment="gnome:dark">
+      <image>https://kleinod.studio/assets/endpaper/screenshot-dark.png</image>
+      <caption>The shelf with categories, pinned books and reading progress</caption>
+    </screenshot>
+    <screenshot environment="gnome:dark">
+      <image>https://kleinod.studio/assets/endpaper/screenshot-notes-dark.png</image>
+      <caption>Marks in five colors and notes in Markdown beside the text</caption>
+    </screenshot>
+    <screenshot environment="gnome:dark">
+      <image>https://kleinod.studio/assets/endpaper/screenshot-search-dark.png</image>
+      <caption>Search in the open book, with your own notes among the results</caption>
+    </screenshot>
+    <screenshot environment="gnome:dark">
+      <image>https://kleinod.studio/assets/endpaper/screenshot-focus-dark.png</image>
+      <caption>Focus mode: only the text</caption>
+    </screenshot>
+    <screenshot environment="gnome:dark">
+      <image>https://kleinod.studio/assets/endpaper/screenshot-library-search-dark.png</image>
+      <caption>Search across the whole library, with covers and excerpts</caption>
+    </screenshot>
+  </screenshots>
   <launchable type="desktop-id">studio.kleinod.Endpaper.desktop</launchable>
   <url type="homepage">https://kleinod.studio/endpaper</url>
   <url type="bugtracker">https://github.com/kleinod-studio/Endpaper/issues</url>
@@ -41,6 +83,11 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.3.1" date="2026-11-06">
+      <description>
+        <p>Screenshots for software centers, and a quicker library search with many books.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-11-06">
       <description>
         <p>Marks, notes and search.</p>

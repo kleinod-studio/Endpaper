@@ -227,13 +227,40 @@ export const createMarks = (view, post) => {
         post('mark-pending', { active: true })
     }
 
+    // Shares at least one character with the other range; marks that only meet do not overlap.
+    const overlaps = (a, b) => a.compareBoundaryPoints(Range.START_TO_END, b) > 0
+        && a.compareBoundaryPoints(Range.END_TO_START, b) < 0
+
+    // A new mark over marks that are there already becomes one mark with them, so that marks never lie
+    // on top of each other. Grows until no other mark overlaps the whole.
+    const joined = (doc, index, range) => {
+        const whole = range.cloneRange()
+        const taken = []
+        for (let grew = true; grew;) {
+            grew = false
+            for (const cfi of sections.get(index) ?? []) {
+                if (taken.includes(cfi) || !marks.has(cfi)) continue
+                let other = null
+                try { other = view.resolveNavigation(cfi).anchor(doc) } catch { continue }
+                if (!other || !overlaps(whole, other)) continue
+                taken.push(cfi)
+                if (other.compareBoundaryPoints(Range.START_TO_START, whole) < 0) whole.setStart(other.startContainer, other.startOffset)
+                if (other.compareBoundaryPoints(Range.END_TO_END, whole) > 0) whole.setEnd(other.endContainer, other.endOffset)
+                grew = true
+            }
+        }
+        return { whole, taken }
+    }
+
     const finish = (doc, range) => {
         const content = contentOf(doc)
         clearPending()
+        const { whole, taken } = joined(doc, content.index, range)
         post('mark-range', {
-            cfi: view.getCFI(content.index, range),
-            quote: quoteOf(range),
-            chapter: view.getProgressOf(content.index, range)?.tocItem?.label?.trim() ?? null,
+            cfi: view.getCFI(content.index, whole),
+            quote: quoteOf(whole),
+            chapter: view.getProgressOf(content.index, whole)?.tocItem?.label?.trim() ?? null,
+            merged: taken,
         })
     }
 
@@ -388,8 +415,11 @@ export const createMarks = (view, post) => {
         setMarking(on, nextHex) {
             marking = on
             hex = nextHex ?? hex
-            if (on) view.deselect()
-            else {
+            if (on) {
+                view.deselect()
+                // The first word keeps its place, in the new color.
+                if (pending) contentOf(pending.doc)?.overlayer?.add(PENDING, pending.word, Overlayer.outline, { color: hex, width: 2 })
+            } else {
                 clearPending()
                 clearCursor()
             }

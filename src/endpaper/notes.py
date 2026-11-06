@@ -480,6 +480,20 @@ def _apply_remove(blocks: list, base: Entry) -> None:
         blocks.remove(current)  # what was changed elsewhere meanwhile stays
 
 
+def _apply_merge(blocks: list, merged: Entry, originals: list[Entry]) -> None:
+    """The joined mark in place of the old ones; an old one changed elsewhere meanwhile stays."""
+    if not _find(blocks, merged.id):
+        _apply_add(blocks, merged)
+    for original in originals:
+        _apply_remove(blocks, original)
+
+
+def _apply_unmerge(blocks: list, merged: Entry, originals: list[Entry]) -> None:
+    for original in originals:
+        _apply_restore(blocks, original, None)
+    _apply_remove(blocks, merged)
+
+
 def _apply_restore(blocks: list, entry: Entry, after: str | None) -> None:
     """Puts a removed mark back where it was, as far as that place still exists."""
     if _find(blocks, entry.id):
@@ -646,6 +660,35 @@ class NotesFile:
         after = entries[place - 1].id if place else None
         self._record(lambda: self._restore(base, after), lambda: self._take_back(base))
         self._remove(entry_id)
+
+    def merge(self, entry_ids: list[str], cfi: str, quote: str = "", chapter: str | None = None,
+              color: str = "yellow", style: str = "highlight") -> Entry:
+        """One mark in place of marks that a new one overlaps, with all their notes in the order of the
+        book. A single step for undo, and a mark changed elsewhere meanwhile stays as it is."""
+        ids = set(entry_ids)
+        originals = [copy.deepcopy(e) for e in self.entries if e.id in ids]
+        if not originals:
+            raise KeyError(entry_ids)
+        notes = []
+        for original in originals:
+            for note in original.notes:
+                taken = {n.id for n in notes}
+                notes.append(replace(note, id=_new_id(taken)) if note.id in taken else copy.copy(note))
+        chapter = " ".join(chapter.split()) or None if chapter else originals[0].chapter
+        merged = Entry(_new_id({e.id for e in self.entries}), cfi, quote, notes, chapter, color, style)
+        saved = copy.deepcopy(merged)
+        self._record(lambda: self._take_back_merge(saved, originals),
+                     lambda: self._change(_apply_merge, copy.deepcopy(saved), copy.deepcopy(originals)))
+        self._change(_apply_merge, copy.deepcopy(merged), copy.deepcopy(originals))
+        return _find(self.blocks, merged.id) or merged
+
+    def _take_back_merge(self, merged: Entry, originals: list[Entry]) -> None:
+        """The marks as they were before, but only if the joined one has no notes written since."""
+        self.refresh()
+        current = self._entry(merged.id)
+        if [n.text for n in current.notes] != [n.text for n in merged.notes]:
+            raise NotesKept(merged.id)
+        self._change(_apply_unmerge, copy.deepcopy(merged), copy.deepcopy(originals))
 
     def _update(self, entry_id: str, changes: dict) -> None:
         self._change(_apply_update, copy.deepcopy(self._entry(entry_id)), changes)

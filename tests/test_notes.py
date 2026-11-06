@@ -395,6 +395,49 @@ class NotesFileTest(unittest.TestCase):
         self.assertEqual(self.open().entries, [])
         self.assertFalse(file.undo())
 
+    def test_marks_that_overlap_become_one_with_all_notes(self):
+        file = self.open()
+        first = file.add("c1", "One", "First note", chapter="A", color="green")
+        file.add_note(first.id, "Second note")
+        second = file.add("c2", "Two", "Third note", chapter="A")
+        other = file.add("c9", "Elsewhere", chapter="B")
+        merged = file.merge([second.id, first.id], "c1-2", "One and Two", None, color="pink", style="underline")
+        saved = self.open().entries
+        self.assertEqual([e.id for e in saved], [merged.id, other.id], "the old marks are gone")
+        self.assertEqual((saved[0].cfi, saved[0].quote, saved[0].color, saved[0].style, saved[0].chapter),
+                         ("c1-2", "One and Two", "pink", "underline", "A"))
+        self.assertEqual(texts(saved[0]), ["First note", "Second note", "Third note"], "in the order of the book")
+        self.assertEqual(len({n.id for n in saved[0].notes}), 3, "each note can still be found by its id")
+
+    def test_undo_splits_a_joined_mark_again(self):
+        file = self.open()
+        first = file.add("c1", "One", "First note", chapter="A")
+        second = file.add("c2", "Two", chapter="A")
+        file.merge([first.id, second.id], "c1-2", "One and Two", "A")
+        self.assertTrue(file.undo())
+        saved = self.open().entries
+        self.assertEqual([(e.id, e.cfi) for e in saved], [(first.id, "c1"), (second.id, "c2")])
+        self.assertEqual(texts(saved[0]), ["First note"])
+        self.assertTrue(file.redo())
+        self.assertEqual([e.cfi for e in self.open().entries], ["c1-2"])
+
+    def test_undo_of_a_join_keeps_a_note_written_since(self):
+        file = self.open()
+        first = file.add("c1", "One")
+        merged = file.merge([first.id], "c1-2", "One and Two")
+        file.add_note(merged.id, "Written after the join")
+        with self.assertRaises(NotesKept):
+            file.undo()
+        self.assertEqual(texts(self.open().entries[0]), ["Written after the join"])
+
+    def test_a_join_keeps_a_mark_changed_elsewhere(self):
+        file = self.open()
+        first = file.add("c1", "One", "base", chapter="A")
+        self.outside(lambda text: text.replace("base", "changed outside"))
+        file.merge([first.id], "c1-2", "One and Two", "A")
+        saved = self.open().entries
+        self.assertIn("changed outside", [t for e in saved for t in texts(e)], "nothing written elsewhere is lost")
+
     def test_undo_keeps_what_changed_elsewhere(self):
         file = self.open()
         file.add(CFI, "Quote", "base")

@@ -415,8 +415,16 @@ class ReaderPage(Adw.NavigationPage):
         if button.get_active():
             self._mark_color = name
             self.bookmark_button.set_active(False)
-        self._update_marking()
+            self._update_marking()
+        else:
+            # Going to another color turns this one off first: only once that has settled is it clear
+            # whether marking ends, so that the first word and the cursor stay with a new color.
+            GLib.idle_add(self._update_marking_once)
         self.web.grab_focus()
+
+    def _update_marking_once(self):
+        self._update_marking()
+        return GLib.SOURCE_REMOVE
 
     def _on_underline(self, button):
         if button.get_active() and not self.marking:
@@ -689,10 +697,17 @@ class ReaderPage(Adw.NavigationPage):
     def _on_mark_range(self, message):
         if not self.notes:
             return
+        merged = set(message.get("merged") or [])
         existing = next((e for e in self.notes.entries if e.cfi == message["cfi"]), None)
+        overlapped = [e.id for e in self.notes.entries if e.cfi in merged]
         try:
-            if existing:  # the same place once more: another color, not a second mark
+            if existing and set(overlapped) <= {existing.id}:
+                # the same place once more, or a part of one mark: another color, not a second mark
                 self.notes.update(existing.id, color=self._mark_color, style=self._style())
+            elif overlapped:  # over marks that are there already: one mark with all their notes
+                self.notes.merge(overlapped, message["cfi"], message["quote"], message.get("chapter"),
+                                 self._mark_color, self._style())
+                self._send_marks()
             else:
                 self.notes.add(message["cfi"], message["quote"], "", message.get("chapter"), self._mark_color, self._style())
         except NotesError:

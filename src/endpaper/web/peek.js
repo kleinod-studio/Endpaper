@@ -258,7 +258,8 @@ export const createPeek = (view, { theme, isMarking, label }) => {
 
     const show = async (a, index, pin) => {
         const place_ = resolve(a, index)
-        if (!place_ || isMarking()) return false
+        // While marking, a click on a link marks its word: the preview comes on hover only.
+        if (!place_ || (pin && isMarking())) return false
         current = a
         let found = null
         try {
@@ -288,6 +289,8 @@ export const createPeek = (view, { theme, isMarking, label }) => {
         target = place_.href
         go.textContent = label()
         go.hidden = !pin || Boolean(found.closest(`[${HIDDEN}]`))
+        // While marking it lets clicks through to the words below it, and goes with the pointer.
+        box.style.pointerEvents = isMarking() ? 'none' : ''
         box.hidden = false
         if (!place(a)) hide()
         return true
@@ -357,6 +360,7 @@ export const createPeek = (view, { theme, isMarking, label }) => {
             doc.addEventListener('pointerdown', e => {
                 lastPointer = e.pointerType || 'mouse'
                 pressing = true
+                if (isMarking()) hide() // a word was chosen: the preview must not cover what comes next
             }, true)
             doc.addEventListener('pointerup', () => { pressing = false }, true)
             doc.addEventListener('mouseover', e => {

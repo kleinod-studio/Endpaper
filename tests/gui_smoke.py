@@ -1030,9 +1030,21 @@ def scenario(app, window):
     reader.mark_buttons["green"].set_active(True)
     spin(0.2)
     link("note-mark", "mouseover")
+    check(wait_for(lambda: peek()["visible"], 3), "while marking, a preview comes on hover too")
+    letting_through = "document.querySelector('.endpaper-peek').style.pointerEvents === 'none'"
+    check(not peek()["pinned"] and js(reader, letting_through), "and lets clicks through to the words below it")
+    js(reader, "document.querySelector('foliate-view').renderer.getContents()[0].doc.querySelector('a[href]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }))")
+    check(wait_for(lambda: not peek()["visible"], 3), "a click to mark takes it away")
+    link("note-mark", "click")
     spin(0.6)
-    check(not peek()["visible"], "while marking, nothing pops up")
+    check(not peek()["visible"], "and a click on a link shows nothing either: it marks the word")
     reader.stop_marking()
+    spin(1)  # the bar below the text goes, and the page is laid out anew
+    js(reader, "endpaper.goToIndex(0)")
+    spin(0.6)
+    link("note-mark", "mouseover")
+    check(wait_for(lambda: peek()["visible"], 3) and not js(reader, letting_through), f"after marking, the preview can be used again ({peek()})")
+    js(reader, "endpaper.peekHide()")
 
     print("Searching in the book")
     window.activate_action("win.search", None)

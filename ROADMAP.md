@@ -54,6 +54,10 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 - [ ] If the quality convinces: short answers with a small language model, based only on your books, with every source to jump to
 - [ ] Models run locally only, and the app stays without network access
 
+## Later: Studying with two books
+
+- [ ] Two books open side by side, such as a study article and the Bible, to write what you learn from one as a note in the other
+
 ## Later: Endpaper and Typecase together
 
 - [ ] The two apps can talk to each other

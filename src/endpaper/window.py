@@ -3,7 +3,7 @@ from gettext import gettext as _
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from . import config, library
-from .shelf import ShelfPage
+from .shelf import ShelfPage, error_text
 
 
 class EndpaperWindow(Adw.ApplicationWindow):
@@ -118,8 +118,19 @@ class EndpaperWindow(Adw.ApplicationWindow):
         # The page comes first: laying out a book needs the size of the finished view.
         self.navigation.push(self.reader)
         reference = book.file_key in library.read_reference(book.category)
-        self.reader.open_book(book.path, info.key, info.title, goal, reference)
+        finished = book.file_key in library.read_finished(book.category)
+        self.reader.on_finished = lambda _path: self._on_finished(book)
+        self.reader.open_book(book.path, info.key, info.title, goal, reference, finished)
         self.reader.focus_text()
+
+    def _on_finished(self, book):
+        """The reader said the book is finished: it goes among the finished books on the shelf."""
+        try:
+            library.set_finished(book, True)
+        except (library.LibraryError, OSError) as error:
+            self.show_toast(error_text(error))
+            return
+        self.shelf.schedule_refresh()
 
     def _on_popped(self, _view, page):
         if page is self.reader and self.navigation.get_visible_page() is not self.reader:

@@ -51,12 +51,16 @@ class Category:
     books: list[Book] = field(default_factory=list)
     pinned: list[str] = field(default_factory=list)  # file keys, see Book.file_key
     reference: list[str] = field(default_factory=list)  # books to look things up in, not to read through
+    finished: list[str] = field(default_factory=list)  # books the reader has marked as read
 
     def is_pinned(self, book: Book) -> bool:
         return book.file_key in self.pinned
 
     def is_reference(self, book: Book) -> bool:
         return book.file_key in self.reference
+
+    def is_finished(self, book: Book) -> bool:
+        return book.file_key in self.finished
 
 
 def notes_path_for(book_path: Path) -> Path:
@@ -143,12 +147,16 @@ def write_reference(folder: Path, books: list[str]) -> None:
     _write_list(folder, "reference", books)
 
 
+def read_finished(folder: Path) -> list[str]:
+    return _read_list(folder, "finished")
+
+
 def scan(root: Path) -> list[Category]:
     """Categories in name order; the books without a category come first, if there are any."""
     result = []
     loose = _collect_books(root, root, root, False)
     if loose:
-        result.append(Category(root, None, loose, read_pins(root), read_reference(root)))
+        result.append(Category(root, None, loose, read_pins(root), read_reference(root), read_finished(root)))
     folders = []
     try:
         for entry in os.scandir(root):
@@ -158,7 +166,8 @@ def scan(root: Path) -> list[Category]:
         return result
     for folder in sorted(folders, key=lambda p: p.name.casefold()):
         result.append(Category(
-            folder, folder.name, _collect_books(folder, folder, root, True), read_pins(folder), read_reference(folder)))
+            folder, folder.name, _collect_books(folder, folder, root, True), read_pins(folder), read_reference(folder),
+            read_finished(folder)))
     return result
 
 
@@ -243,8 +252,8 @@ def _move_book_files(book: Book, target: Path) -> None:
         raise
 
 
-# What the category file says about a book: whether it is pinned, and whether it is a reference work.
-_BOOK_LISTS = ("pinned", "reference")
+# What the category file says about a book: whether it is pinned, a reference work, or read.
+_BOOK_LISTS = ("pinned", "reference", "finished")
 
 
 def _take_out(category: Path, name: str, key: str) -> bool:
@@ -256,7 +265,7 @@ def _take_out(category: Path, name: str, key: str) -> bool:
 
 
 def move_book(book: Book, category: Path) -> Book:
-    """Moves a book to the top level of a category. Its pin and the mark as reference work move along."""
+    """Moves a book to the top level of a category. Its pin and its marks as reference work or as read move along."""
     moved = Book(category / book.path.name, category)
     if moved.path == book.path:
         return book
@@ -304,6 +313,13 @@ def set_reference(book: Book, reference: bool) -> None:
     if reference:
         books.append(book.file_key)
     write_reference(book.category, books)
+
+
+def set_finished(book: Book, finished: bool) -> None:
+    books = [key for key in read_finished(book.category) if key != book.file_key]
+    if finished:
+        books.append(book.file_key)
+    _write_list(book.category, "finished", books)
 
 
 def trash_paths_for_book(book: Book) -> list[Path]:

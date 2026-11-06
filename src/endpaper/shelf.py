@@ -20,6 +20,7 @@ MIN_TEXT_QUERY = 3  # shorter words stand in nearly every book
 FOUND_COVER_WIDTH = 72  # the covers beside the passages, in the proportions of the shelf
 FOUND_COVER_HEIGHT = round(FOUND_COVER_WIDTH * COVER_HEIGHT / COVER_WIDTH)
 FOUND_BATCH = 20  # books of the library search shown at a time, the next ones while scrolling down to them
+FINISHED_KEY = "/finished"  # the folding state of the finished books; no folder can have this name
 
 
 def error_text(error: Exception) -> str:
@@ -39,6 +40,8 @@ class BookCard(Gtk.FlowBoxChild):
         self.info = BookInfo(title=book.path.stem)
         self.pinned = False
         self.reference = False  # a book to look things up in: no progress is shown
+        self.finished = False  # marked as read: the ring is full, whatever the position
+        self.smart = False  # the second card of a finished book, at the end of the shelf
 
         self.picture = Gtk.Picture(content_fit=Gtk.ContentFit.COVER, can_shrink=True, visible=False)
         self.placeholder = Gtk.Label(
@@ -130,7 +133,7 @@ class BookCard(Gtk.FlowBoxChild):
         if self.info.cover:
             self.picture.set_filename(self.info.cover)
         self.picture.set_visible(bool(self.info.cover))
-        self.pin_button.set_visible(self.pinned or self._hover)
+        self.pin_button.set_visible((self.pinned or self._hover) and not self.smart)
         self.pin_button.set_opacity(1 if self.pinned or self._hover else 0)
         self.pin_button.set_tooltip_text(_("Unpin") if self.pinned else _("Pin"))
         if self.pinned:
@@ -138,6 +141,8 @@ class BookCard(Gtk.FlowBoxChild):
         else:
             self.pin_button.remove_css_class("accent")
         fraction = self.shelf.state.fraction(self.info.key) if self.info.key and not self.reference else None
+        if self.finished:
+            fraction = 1.0
         self.progress.set_visible(bool(fraction))
         self.ring.show_progress(fraction or 0, animate=False)
         parts = [self.info.title]
@@ -147,7 +152,9 @@ class BookCard(Gtk.FlowBoxChild):
             parts.append(_("Pinned"))
         if self.reference:
             parts.append(_("Reference Work"))
-        if fraction:
+        if self.finished:
+            parts.append(_("Finished"))
+        elif fraction:
             parts.append(_("{percent}%").format(percent=round(fraction * 100)))
         self.update_property([Gtk.AccessibleProperty.LABEL], [", ".join(parts)])
 
@@ -186,12 +193,16 @@ class BookCard(Gtk.FlowBoxChild):
 
 
 class CategorySection(Gtk.Box):
-    def __init__(self, shelf: "ShelfPage", category: Category):
+    """smart: the finished books of all categories, at the end of the shelf. They stay in their own
+    category as well; this is no folder, so it has no menu and takes no books."""
+
+    def __init__(self, shelf: "ShelfPage", category: Category, smart: bool = False):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         self.shelf = shelf
         self.category = category
+        self.smart = smart
         self.cards: dict[Path, BookCard] = {}
-        self.key = category.name or ""
+        self.key = FINISHED_KEY if smart else category.name or ""
 
         self.chevron = Gtk.Image()
         self.heading = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
@@ -210,6 +221,7 @@ class CategorySection(Gtk.Box):
         menu.add_css_class("flat")
         menu.set_menu_model(shelf.category_menu(category))
         self.menu_button = menu
+        menu.set_visible(not smart)
         header = Gtk.Box(spacing=6)
         header.append(self.toggle)
         header.append(menu)
@@ -235,7 +247,8 @@ class CategorySection(Gtk.Box):
         drop = Gtk.DropTarget.new(GObject.TYPE_NONE, Gdk.DragAction.MOVE | Gdk.DragAction.COPY)
         drop.set_gtypes([GObject.TYPE_STRING, Gdk.FileList])
         drop.connect("drop", self._on_drop)
-        self.add_controller(drop)
+        if not smart:
+            self.add_controller(drop)
 
         self.collapsed = self.key in shelf.state.collapsed
         self.update(category)
@@ -246,9 +259,13 @@ class CategorySection(Gtk.Box):
             return True
         return self.shelf.move_dropped(str(value), self.category.path)
 
+    @property
+    def name(self) -> str:
+        return _("Finished") if self.smart else self.category.name or _("Without Category")
+
     def update(self, category: Category):
         self.category = category
-        self.heading.set_label(category.name or _("Without Category"))
+        self.heading.set_label(self.name)
         present = {book.path for book in category.books}
         for path in [p for p in self.cards if p not in present]:
             self.flow.remove(self.cards.pop(path))
@@ -256,17 +273,20 @@ class CategorySection(Gtk.Box):
             card = self.cards.get(book.path)
             if card is None:
                 card = BookCard(self.shelf, book)
+                card.smart = self.smart
                 self.cards[book.path] = card
                 self.flow.append(card)
                 self.shelf.info_store.request(book.path, card.set_info)
             else:
                 card.book = book
-            card.pinned = category.is_pinned(book)
-            card.reference = category.is_reference(book)
+            home = self.shelf.category_of(book) if self.smart else category
+            card.pinned = not self.smart and category.is_pinned(book)
+            card.reference = bool(home) and home.is_reference(book)
+            card.finished = bool(home) and home.is_finished(book)
             card.update_display()
         count = len(category.books)
         self.count.set_label(str(count))
-        self.empty_hint.set_visible(count == 0)
+        self.empty_hint.set_visible(count == 0 and not self.smart)
         self.menu_button.set_menu_model(self.shelf.category_menu(category))
         self._update_toggle()
         self.refilter()
@@ -274,7 +294,7 @@ class CategorySection(Gtk.Box):
     def _update_toggle(self):
         self.chevron.set_from_icon_name("pan-end-symbolic" if self.collapsed else "pan-down-symbolic")
         count = len(self.category.books)
-        name = self.category.name or _("Without Category")
+        name = self.name
         books = ngettext("{count} book", "{count} books", count).format(count=count)
         self.toggle.update_property([Gtk.AccessibleProperty.LABEL], [f"{name}, {books}"])
         self.toggle.update_state([Gtk.AccessibleState.EXPANDED], [0 if self.collapsed else 1])
@@ -314,7 +334,9 @@ class CategorySection(Gtk.Box):
     def refilter(self):
         self.flow.invalidate_filter()
         self.flow.invalidate_sort()
-        if self.shelf.query:
+        if self.smart:  # a search shows each book once, in its own category
+            self.set_visible(bool(self.cards) and not self.shelf.query)
+        elif self.shelf.query:
             in_scope = self.shelf.scope is None or self.shelf.scope == self.category.path
             self.set_visible(in_scope and any(card.matches(self.shelf.query) for card in self.cards.values()))
         else:
@@ -332,6 +354,7 @@ class ShelfPage(Adw.NavigationPage):
         self.toast = toast
         self.root: Path | None = None
         self.sections: dict[Path, CategorySection] = {}
+        self.finished_section: CategorySection | None = None  # created with the first finished book
         self.categories: list[Category] = []
         self.query = ""
         self.scope: Path | None = None  # the category the search is limited to
@@ -454,6 +477,7 @@ class ShelfPage(Adw.NavigationPage):
             ("open", lambda _a, p: self._with_card(p, self.open_card), "s"),
             ("toggle-pin", lambda _a, p: self._with_card(p, self.toggle_pin), "s"),
             ("toggle-reference", lambda _a, p: self._with_card(p, self.toggle_reference), "s"),
+            ("toggle-finished", lambda _a, p: self._with_card(p, self.toggle_finished), "s"),
             ("rename-book", lambda _a, p: self._with_card(p, self.rename_book), "s"),
             ("trash-book", lambda _a, p: self._with_card(p, self.trash_book), "s"),
             ("move-book", self._action_move_book, "as"),
@@ -471,10 +495,31 @@ class ShelfPage(Adw.NavigationPage):
 
     def set_root(self, root: Path | None):
         self.root = root
-        for section in self.sections.values():
+        for section in self.all_sections():
             self.sections_box.remove(section)
         self.sections = {}
+        self.finished_section = None
         self.refresh()
+
+    def all_sections(self) -> list[CategorySection]:
+        """The categories, and the finished books after them."""
+        return [*self.sections.values(), *([self.finished_section] if self.finished_section else [])]
+
+    def category_of(self, book: Book) -> Category | None:
+        return next((c for c in self.categories if c.path == book.category), None)
+
+    def _update_finished(self):
+        books = [book for category in self.categories for book in category.books if category.is_finished(book)]
+        if self.finished_section is None:
+            if not books:
+                return
+            self.finished_section = CategorySection(self, Category(self.root, None, books), smart=True)
+            self.sections_box.append(self.finished_section)
+        else:
+            self.finished_section.update(Category(self.root, None, books))
+            last = self.sections_box.get_last_child()
+            if last is not self.finished_section:  # a new category goes to the end at first
+                self.sections_box.reorder_child_after(self.finished_section, last)
 
     def refresh(self):
         self._refresh_timer = 0
@@ -498,6 +543,7 @@ class ShelfPage(Adw.NavigationPage):
                 section.update(category)
             self.sections_box.reorder_child_after(section, previous)
             previous = section
+        self._update_finished()
         self._watch(self._folders_to_watch())
         self._update_scopes()
         self.indexer.update([book.path for category in self.categories for book in category.books])
@@ -556,7 +602,7 @@ class ShelfPage(Adw.NavigationPage):
 
     def refresh_progress(self):
         """After reading: the progress bars and, when sorted by recent reading, the order."""
-        for section in self.sections.values():
+        for section in self.all_sections():
             for card in section.cards.values():
                 card.update_display()
             section.flow.invalidate_sort()
@@ -572,7 +618,7 @@ class ShelfPage(Adw.NavigationPage):
         self._apply_query()
 
     def _apply_query(self):
-        for section in self.sections.values():
+        for section in self.all_sections():
             section.refilter()
         self._show_found()
         self._update_stack()
@@ -772,7 +818,7 @@ class ShelfPage(Adw.NavigationPage):
         action.set_state(value)
         self.sort_mode = value.get_string()
         config.update(sort=self.sort_mode)
-        for section in self.sections.values():
+        for section in self.all_sections():
             section.flow.invalidate_sort()
 
     # --- Menus -----------------------------------------------------------------------------
@@ -792,6 +838,7 @@ class ShelfPage(Adw.NavigationPage):
         return menu
 
     def book_menu(self, card: BookCard) -> Gio.Menu:
+        card = self._card_for(str(card.book.path)) or card  # the second card of a finished book tells less
         target = GLib.Variant("s", str(card.book.path))
         menu = Gio.Menu()
 
@@ -802,6 +849,7 @@ class ShelfPage(Adw.NavigationPage):
         first = Gio.Menu()
         add(first, _("Open"), "shelf.open")
         add(first, _("Unpin") if card.pinned else _("Pin"), "shelf.toggle-pin")
+        add(first, _("Mark as Not Finished") if card.finished else _("Mark as Finished"), "shelf.toggle-finished")
         add(first, _("No Longer a Reference Work") if card.reference else _("Mark as Reference Work"),
             "shelf.toggle-reference")
         menu.append_section(None, first)
@@ -848,12 +896,23 @@ class ShelfPage(Adw.NavigationPage):
         self.schedule_refresh()
         return True
 
+    def _main_card(self, card: BookCard) -> BookCard:
+        """The card in the book's own category, which knows its pin."""
+        return self._card_for(str(card.book.path)) or card
+
     def toggle_pin(self, card: BookCard):
+        card = self._main_card(card)
         self._attempt(lambda: library.set_pinned(card.book, not card.pinned))
 
     def toggle_reference(self, card: BookCard):
         """A book to look things up in rather than to read through shows no progress."""
+        card = self._main_card(card)
         self._attempt(lambda: library.set_reference(card.book, not card.reference))
+
+    def toggle_finished(self, card: BookCard):
+        """A finished book shows a full ring and stands among the finished books as well."""
+        card = self._main_card(card)
+        self._attempt(lambda: library.set_finished(card.book, not card.finished))
 
     def _action_move_book(self, _action, parameter):
         path, category = parameter.unpack()

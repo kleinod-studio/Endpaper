@@ -32,6 +32,7 @@ ANSWER_SAVE_DELAY_MS = 500
 # The notes flyout, normal and doubled: never narrower than the first number, never wider than the last.
 NOTES_MIN_WIDTH = 300
 BAR_BOTTOM = 18  # the bar below the text and the progress card stand this far from the bottom
+FINISH_QUESTION = 0.97  # from here the card asks whether the book is finished: at 90 % that would come too soon
 EDGE = 8  # px from the top at which the hidden header bar comes back in focus mode
 EDGE_LEAVE = 120  # and how far away the mouse has to go for it to hide again
 NOTES_WIDTH = (0.3, 420)
@@ -174,9 +175,12 @@ class ReaderPage(Adw.NavigationPage):
         self._last_toc_href = None
         self.on_opened = None  # for tests
         self.reference = False
+        self.finished = False  # marked as read
+        self.on_finished = None  # called when the reader says the book is finished
         self.focus_mode = False  # only the text, full screen; the window switches it (win.focus-mode)
         self.narrow = False
         self._progress_wanted = False
+        self._fraction: float | None = None
         self._opening = 0  # counts the books opened, so that what the page says belongs to the book it is about
         self._goal: dict | None = None  # where the library search leads in the book being opened
         self._near: dict | None = None  # the passage whose result the next search should go to
@@ -866,9 +870,10 @@ class ReaderPage(Adw.NavigationPage):
             except NotesError:
                 self._save_failed()
 
-    def _build_progress_badge(self) -> Gtk.Button:
+    def _build_progress_badge(self) -> Gtk.Widget:
         """How far the book has been read, in the corner: the same ring as the writing goal in Typecase.
-        A click shows the table of contents, to see where in the book that is."""
+        A click shows the table of contents, to see where in the book that is. Near the end a second card
+        beside it asks whether the book is finished."""
         install_ring_css()
         self.progress_ring = ProgressRing(20, 3.5)
         self.progress_label = Gtk.Label(css_classes=["numeric", "caption-heading"])
@@ -876,22 +881,47 @@ class ReaderPage(Adw.NavigationPage):
         box.append(self.progress_ring)
         box.append(self.progress_label)
         self.progress_badge = Gtk.Button(
-            child=box, halign=Gtk.Align.END, valign=Gtk.Align.END, margin_end=BAR_BOTTOM, margin_bottom=BAR_BOTTOM, visible=False,
+            child=box, visible=False,
             tooltip_text=_("Reading Progress"), css_classes=["progress-badge"], focus_on_click=False,
         )
         self.progress_badge.connect("clicked", lambda _b: self.toc_button.set_active(not self.toc_button.get_active()))
-        return self.progress_badge
+        self.finish_label = Gtk.Label(label=_("Finished?"), css_classes=["caption-heading"])
+        finish = Gtk.Box(spacing=8)
+        finish.append(Gtk.Image(icon_name="object-select-symbolic"))
+        finish.append(self.finish_label)
+        self.finish_button = Gtk.Button(
+            child=finish, visible=False, tooltip_text=_("Mark as Finished"), css_classes=["progress-badge"],
+            focus_on_click=False,
+        )
+        self.finish_button.update_property([Gtk.AccessibleProperty.LABEL], [_("Mark as Finished")])
+        self.finish_button.connect("clicked", lambda _b: self._mark_finished())
+        corner = Gtk.Box(
+            spacing=8, halign=Gtk.Align.END, valign=Gtk.Align.END, margin_end=BAR_BOTTOM, margin_bottom=BAR_BOTTOM,
+        )
+        corner.append(self.finish_button)
+        corner.append(self.progress_badge)
+        return corner
+
+    def _mark_finished(self):
+        self.finished = True
+        if self.on_finished:
+            self.on_finished(self.book_path)
+        self._show_progress(self._fraction)
 
     def _show_progress(self, fraction: float | None):
+        self._fraction = fraction
         if self.reference or fraction is None:
             self._progress_wanted = False
             self._update_bottom()
             return
         animate = self.progress_badge.get_visible()
-        self.progress_label.set_label(_("{percent}%").format(percent=round(fraction * 100)))
+        if self.finished:
+            self.progress_label.set_label(_("Finished"))
+        else:
+            self.progress_label.set_label(_("{percent}%").format(percent=round(fraction * 100)))
         self.progress_badge.update_property(
             [Gtk.AccessibleProperty.LABEL], [f"{_('Reading Progress')}: {self.progress_label.get_label()}"])
-        self.progress_ring.show_progress(fraction, animate)
+        self.progress_ring.show_progress(1.0 if self.finished else fraction, animate)
         self._progress_wanted = True
         self._update_bottom()
 
@@ -921,6 +951,9 @@ class ReaderPage(Adw.NavigationPage):
 
     def _update_bottom(self):
         self.progress_badge.set_visible(self._progress_wanted)
+        asking = self._progress_wanted and not self.finished and (self._fraction or 0) >= FINISH_QUESTION
+        self.finish_button.set_visible(asking)
+        self.finish_label.set_visible(not self.narrow)  # in a narrow window the text needs the room
 
     def _on_content_motion(self, _controller, _x, y):
         if not self.focus_mode:
@@ -945,6 +978,7 @@ class ReaderPage(Adw.NavigationPage):
         """In a narrow window the text needs all the room."""
         self.narrow = narrow
         self._update_page_buttons()
+        self._update_bottom()
         for split in (self.split, self.notes_split):
             # Without this a sidebar pops open whenever the window becomes wide again.
             if narrow and not split.get_collapsed():
@@ -1273,11 +1307,14 @@ class ReaderPage(Adw.NavigationPage):
 
     # --- Book ---------------------------------------------------------------------------
 
-    def open_book(self, path: Path, key: str, title: str, goal: dict | None = None, reference: bool = False) -> None:
+    def open_book(self, path: Path, key: str, title: str, goal: dict | None = None, reference: bool = False,
+                  finished: bool = False) -> None:
         """goal: a place found by the library search, {"query", "section", "path"}, or only a query.
-        reference: a book to look things up in, which shows no progress."""
+        reference: a book to look things up in, which shows no progress. finished: marked as read."""
         self.book_path, self.book_key = path, key
         self.reference = reference
+        self.finished = finished
+        self._fraction = None
         self._progress_wanted = False
         self._update_bottom()
         self._opening += 1

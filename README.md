@@ -11,6 +11,7 @@ Your books stay plain `.epub` files in a folder of your choice, with one subfold
 - **Shelf**: any folder becomes your library, and its subfolders become categories. Categories fold away to keep the start page tidy.
 - **Pins**: pin books in each category. They come first, and stay visible while the category is folded.
 - **Reading progress**: a small ring on the cover and in the corner of the open book shows how far you have read, the same ring as the writing goal in Typecase. It turns green when a book is finished. Books you look things up in rather than read through can be marked as reference works, and show no progress.
+- **Finished books**: near the end of a book the card beside the ring asks whether you have finished it; the shelf menu marks a book as finished too. Finished books also stand together at the end of the shelf, and stay in their own category.
 - **Order from the shelf**: create, rename and delete categories; add, rename and delete books; move books by dragging or with Alt+Up and Alt+Down. Deleting always goes through the system trash, and nothing is ever overwritten.
 - **Changes from outside**: add a file with your file manager or a sync tool, and it appears on the shelf.
 - **Reading**: pages or continuous scrolling, with two pages side by side when the window is wide enough, five page colors, turned with the mouse, the scroll wheel or the keyboard. Every book remembers where you were. Footnotes and references show in a small popup at their mark, on hover or tap, without leaving the page. A click on a picture shows it large.
@@ -33,7 +34,7 @@ Only EPUB is supported, and only without DRM.
 | What | Where | |
 | --- | --- | --- |
 | Books | Your library folder | Never changed by Endpaper |
-| Pins, reference works | `.endpaper.json` in each category folder | Syncs along with the folder |
+| Pins, reference works, finished books | `.endpaper.json` in each category folder | Syncs along with the folder |
 | Marks and notes | `<book>.notes.md` beside the book | Readable without Endpaper, moves and syncs with the book |
 | Reading positions, folded categories | App data on this computer | Not synced |
 | Covers | Cache | Can be deleted at any time |

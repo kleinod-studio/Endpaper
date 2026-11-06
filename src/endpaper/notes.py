@@ -37,6 +37,7 @@ readable, and a mark takes the current form when the file is saved.
 """
 
 import copy
+import functools
 import hashlib
 import re
 import secrets
@@ -534,13 +535,29 @@ def _apply_remove_note(blocks: list, base: Entry, note_id: str, old_text: str) -
 EXCERPT_CONTEXT = 50  # characters on either side of the word
 
 
+_NOT_ASCII = re.compile(r"[^\x00-\x7f]+")
+
+
+@functools.lru_cache(maxsize=4096)
+def _folded_char(char: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", char) if not unicodedata.combining(c)).casefold()
+
+
 def _folded(text: str) -> tuple[str, list[int]]:
-    """The text without case and accents, so that "Noomi" finds "noomí", with the place of each character."""
-    out, places = [], []
-    for place, char in enumerate(text):
-        base = "".join(c for c in unicodedata.normalize("NFD", char) if not unicodedata.combining(c)).casefold()
-        out.append(base)
-        places.extend([place] * len(base))
+    """The text without case and accents, so that "Noomi" finds "noomí", with the place of each character.
+    Plain letters are folded in one go and only the others one by one: the library search folds many
+    long passages at a time."""
+    out, places, done = [], [], 0
+    for run in _NOT_ASCII.finditer(text):
+        out.append(text[done:run.start()].lower())
+        places.extend(range(done, run.start()))
+        for place in range(run.start(), run.end()):
+            base = _folded_char(text[place])
+            out.append(base)
+            places.extend([place] * len(base))
+        done = run.end()
+    out.append(text[done:].lower())
+    places.extend(range(done, len(text)))
     return "".join(out), places
 
 

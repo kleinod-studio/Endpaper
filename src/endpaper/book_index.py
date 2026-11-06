@@ -417,35 +417,45 @@ class Index:
         if not expression:
             return []
         try:
+            known = {book_id: (path, code) for book_id, path, code in self.db.execute(
+                "SELECT id, path, language FROM books")}
+            # Only numbers per find, in the order of the books: a common word stands in nearly every passage.
             rows = self.db.execute(
-                "SELECT places.id, books.path, books.language FROM passages JOIN places ON places.id = passages.rowid"
-                " JOIN books ON books.id = places.book WHERE passages MATCH ? ORDER BY places.id",
+                "SELECT places.book, places.id FROM passages JOIN places ON places.id = passages.rowid"
+                " WHERE passages MATCH ? ORDER BY passages.rowid",
                 (expression,),
             ).fetchall()
         except sqlite3.Error:
             return []
         wanted = set(books) if books is not None else None
-        by_book: dict[str, list[int]] = {}
-        languages: dict[str, str | None] = {}
-        for place, book, code in rows:
-            if wanted is None or book in wanted:
-                by_book.setdefault(book, []).append(place)
-                languages[book] = code
+        counts: dict[int, int] = {}
+        firsts: dict[int, list[int]] = {}
+        for book_id, place in rows:
+            count = counts.get(book_id, 0)
+            counts[book_id] = count + 1
+            if count < EXCERPTS_PER_BOOK:
+                firsts.setdefault(book_id, []).append(place)
+        # The passages to show, of all books at once.
+        shown = [place for book_id, first in firsts.items() for place in first]
+        details: dict[int, tuple] = {}
+        for start in range(0, len(shown), 500):  # SQLite allows only so many values in one query
+            chunk = shown[start:start + 500]
+            details.update((place, rest) for place, *rest in self.db.execute(
+                f"SELECT places.id, places.section, places.path, passages.text FROM places JOIN passages"
+                f" ON passages.rowid = places.id WHERE places.id IN ({','.join('?' * len(chunk))})",
+                chunk,
+            ))
         found = []
-        for book, places in by_book.items():
+        for book_id, first in firsts.items():
+            book, code = known.get(book_id, (None, None))
+            if book is None or (wanted is not None and book not in wanted):
+                continue
             book_marks = [(places_of, mark) for mark in (marks or {}).get(book, [])
                           if (places_of := cfi_places(mark.get("cfi", "")))]
-            first = places[:EXCERPTS_PER_BOOK]
-            placeholders = ",".join("?" * len(first))
-            details = self.db.execute(
-                f"SELECT places.section, places.path, passages.text FROM places JOIN passages"
-                f" ON passages.rowid = places.id WHERE places.id IN ({placeholders}) ORDER BY places.id",
-                first,
-            ).fetchall()
             passages = []
-            for section, element_path, text in details:
+            for section, element_path, text in (details[place] for place in first if place in details):
                 path = [int(n) for n in element_path.split("/") if n]
-                where, form = locate(text, query, languages[book])
+                where, form = locate(text, query, code)
                 marked = []
                 for (mark_section, start, end), mark in book_marks:
                     if mark_section == section and _within(path, start, end):
@@ -455,7 +465,7 @@ class Index:
                 if form:
                     passage["query"] = form  # the search in the book finds the words only as they stand
                 passages.append(passage)
-            found.append(Found(book, len(places), passages))
+            found.append(Found(book, counts[book_id], passages))
         found.sort(key=lambda item: (-item.count, item.book))
         return found
 

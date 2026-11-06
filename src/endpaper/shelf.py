@@ -19,6 +19,7 @@ REFRESH_DELAY_MS = 400
 MIN_TEXT_QUERY = 3  # shorter words stand in nearly every book
 FOUND_COVER_WIDTH = 72  # the covers beside the passages, in the proportions of the shelf
 FOUND_COVER_HEIGHT = round(FOUND_COVER_WIDTH * COVER_HEIGHT / COVER_WIDTH)
+FOUND_BATCH = 20  # books of the library search shown at a time, the next ones while scrolling down to them
 
 
 def error_text(error: Exception) -> str:
@@ -335,6 +336,8 @@ class ShelfPage(Adw.NavigationPage):
         self.query = ""
         self.scope: Path | None = None  # the category the search is limited to
         self.suggestion: str | None = None  # what is shown instead of a query that found nothing
+        self._found_pending: list[tuple] = []  # books found but not shown yet
+        self._more_found_timer = 0
         self._scopes: list[Path | None] = [None]
         self._notes: dict[Path, tuple[tuple, NotesFile]] = {}  # read once, again when the file changes
         self.sort_mode = config.sort_mode()
@@ -401,6 +404,8 @@ class ShelfPage(Adw.NavigationPage):
         content.append(Adw.Clamp(child=self.sections_box, maximum_size=1500, tightening_threshold=1200))
         content.append(Adw.Clamp(child=found_box, maximum_size=900))
         self.scroller = Gtk.ScrolledWindow(child=content, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        for signal in ("value-changed", "changed"):
+            self.scroller.get_vadjustment().connect(signal, self._on_scrolled)
 
         choose = Gtk.Button(label=_("Choose Library Folder…"), halign=Gtk.Align.CENTER)
         choose.add_css_class("pill")
@@ -663,12 +668,11 @@ class ShelfPage(Adw.NavigationPage):
         # The books with the most finds first, the reader's own words counted alongside the text.
         order = sorted(set(passages) | set(own), key=lambda book: (
             -(len(own.get(book, [])) + (passages[book].count if book in passages else 0)), str(book)))
-        found = []
-        for book in order:
-            card = self._card_for(str(book))
-            if card is not None:
-                found.append(self._found_group(card, passages.get(book), own.get(book, []), query))
-                self.found_list.append(found[-1])
+        # A common word stands in every book: building all at once would hold the window up for a second.
+        found = [(card, passages.get(book), own.get(book, []), query)
+                 for book in order if (card := self._card_for(str(book))) is not None]
+        self._found_pending = found
+        self._show_more_found()
         notes = []
         if self.suggestion:
             notes.append(_("Nothing found for “{query}”. Showing “{suggestion}”.").format(
@@ -678,6 +682,23 @@ class ShelfPage(Adw.NavigationPage):
         self.found_status.set_label("\n".join(notes))
         self.found_status.set_visible(bool(notes) and bool(found))
         self.found_heading.set_visible(bool(found))
+
+    def _show_more_found(self):
+        batch, self._found_pending = self._found_pending[:FOUND_BATCH], self._found_pending[FOUND_BATCH:]
+        for card, item, own, query in batch:
+            self.found_list.append(self._found_group(card, item, own, query))
+
+    def _on_scrolled(self, adjustment):
+        """The next books once the end of those shown comes within a screen, by scrolling or by the keyboard."""
+        if self._found_pending and not self._more_found_timer and (
+                adjustment.get_value() + 2 * adjustment.get_page_size() >= adjustment.get_upper()):
+            # Not during the layout that changed the adjustment: adding widgets then upsets GTK.
+            self._more_found_timer = GLib.idle_add(self._add_found_batch)
+
+    def _add_found_batch(self):
+        self._more_found_timer = 0
+        self._show_more_found()
+        return GLib.SOURCE_REMOVE
 
     def _found_cover(self, card: BookCard, query: str) -> Gtk.Widget:
         """The book's cover beside its passages, as on the shelf: the eye finds a book by it sooner than by its title.
@@ -702,7 +723,7 @@ class ShelfPage(Adw.NavigationPage):
     def _found_group(self, card: BookCard, item, own: list[dict], query: str) -> Gtk.Box:
         counts = []
         if item:
-            counts.append(ngettext("{count} passage", "{count} passages", item.count).format(count=item.count))
+            counts.append(ngettext("{count} paragraph", "{count} paragraphs", item.count).format(count=item.count))
         if own:
             counts.append(ngettext("{count} own note", "{count} own notes", len(own)).format(count=len(own)))
         group = Adw.PreferencesGroup(title=GLib.markup_escape_text(card.info.title), description=" · ".join(counts))

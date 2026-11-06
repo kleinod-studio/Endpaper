@@ -53,7 +53,7 @@ class ProgressRing(Gtk.Widget):
 
     def show_progress(self, value: float, animate: bool = True) -> None:
         """Glides to the new value (libadwaita skips this when animations are turned off)."""
-        value = max(0.0, min(value, 1.0))
+        value = max(0.0, min(float(value), 1.0))  # a finished book can come as the whole number 1
         self.set_css_classes(["success" if value >= FINISHED else "accent"])
         self.update_property([Gtk.AccessibleProperty.VALUE_NOW], [round(value * 100, 1)])
         self._animation.pause()

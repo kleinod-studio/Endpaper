@@ -35,6 +35,7 @@ from gi.repository import Adw, Gdk, GLib, Graphene, Gtk  # noqa: E402
 
 from endpaper import config, library  # noqa: E402
 from endpaper.main import EndpaperApplication  # noqa: E402
+from endpaper import shelf as shelf_module  # noqa: E402
 from endpaper.notes import MARK_COLORS, NotesFile, NotesKept
 from make_epub import make_epub, make_figures_epub, make_hostile_epub, make_answers_epub, make_notes_epub, make_styled_epub  # noqa: E402
 
@@ -163,9 +164,14 @@ def scenario(app, window):
     shelf.search_entry.set_text("sentence number 3")
     check(wait_for(lambda: len(found()) == 5, 5), f"words in the text of the books are found ({len(found())})")
     check(shelf.stack.get_visible_child_name() == "shelf" and shelf.found_heading.get_visible(), "and shown though no title fits")
-    check(all(len(group.rows) == 3 for group in found()) and found()[0].group.get_description() == "120 passages",
+    check(all(len(group.rows) == 3 for group in found()) and found()[0].group.get_description() == "120 paragraphs",
           f"a few passages of each book, with how many there are ({found()[0].group.get_description()})")
     check("<b>Sentence number 3</b>" in found()[0].rows[0].get_title(), "with the words in bold")
+    shelf_module.FOUND_BATCH = 2
+    shelf._apply_query()
+    check(len(found()) == 2, "many books are shown a few at a time")
+    check(wait_for(lambda: len(found()) == 5, 5), f"and the next ones come while the end is near ({len(found())})")
+    shelf_module.FOUND_BATCH = 20
     check(shelf.scope_choice.get_visible(), "the search can be limited to a category")
     shelf.scope_choice.set_selected(shelf._scopes.index(studium))
     check(wait_for(lambda: [g.book for g in found()] == [studium / "d.epub"], 5), "and then finds only what is in it")
@@ -173,7 +179,7 @@ def scenario(app, window):
     shelf.scope_choice.set_selected(0)
     check(wait_for(lambda: len(found()) == 5, 5), "all categories again")
     shelf.search_entry.set_text("Sentence number 3 of the chapter called Chapter 2")
-    check(wait_for(lambda: found() and found()[0].group.get_description() == "40 passages", 5), "several words are found as they stand")
+    check(wait_for(lambda: found() and found()[0].group.get_description() == "40 paragraphs", 5), "several words are found as they stand")
     shelf.search_entry.set_text("gibt es nicht")
     check(wait_for(lambda: shelf.stack.get_visible_child_name() == "no-results"), "no match says so")
     shelf.search_entry.set_text("")

@@ -75,7 +75,7 @@ class EndpaperWindow(Adw.ApplicationWindow):
         if self.reader:
             self.reader.set_narrow(narrow)
 
-    def open_book(self, book, info):
+    def open_book(self, book, info, goal=None):
         if self.reader is not None and self.navigation.get_visible_page() is self.reader:
             return  # a second activation, such as a quick double click, while the book is already open
         if self.reader is None:
@@ -83,13 +83,15 @@ class EndpaperWindow(Adw.ApplicationWindow):
 
             self.reader = ReaderPage(self.state, self._on_reader_error, self._ask_external_link, self.show_toast)
             self.reader.set_narrow(self.narrow)
+        elif self.reader.book_path is not None:
+            self.reader.close_book()  # the last book, when its page has not finished sliding away yet
         # The page comes first: laying out a book needs the size of the finished view.
         self.navigation.push(self.reader)
-        self.reader.open_book(book.path, info.key, info.title)
+        self.reader.open_book(book.path, info.key, info.title, goal)
         self.reader.focus_text()
 
     def _on_popped(self, _view, page):
-        if page is self.reader:
+        if page is self.reader and self.navigation.get_visible_page() is not self.reader:
             self.reader.close_book()
             self.shelf.refresh_progress()
 
@@ -119,6 +121,7 @@ class EndpaperWindow(Adw.ApplicationWindow):
         if self.reader:
             self.reader.flush()
         self.shelf.info_store.shutdown()
+        self.shelf.indexer.shutdown()
         if not self.is_maximized() and not self.is_fullscreen():
             width, height = self.get_default_size()
             try:

@@ -42,6 +42,13 @@ failures = []
 passed = 0
 
 
+def children(widget):
+    child = widget.get_first_child()
+    while child:
+        yield child
+        child = child.get_next_sibling()
+
+
 def check(condition, what):
     global passed
     if condition:
@@ -151,6 +158,22 @@ def scenario(app, window):
     spin(0.2)
     check(card("a.epub").get_child_visible() and not card("c.epub").get_child_visible(), "search filters by author")
     check(not shelf.sections[studium].get_visible(), "categories without a match are hidden")
+    check(wait_for(lambda: not shelf.indexer.busy, 30), "the books are read for the search in the background")
+    found = lambda: list(children(shelf.found_list))
+    shelf.search_entry.set_text("sentence number 3")
+    check(wait_for(lambda: len(found()) == 5, 5), f"words in the text of the books are found ({len(found())})")
+    check(shelf.stack.get_visible_child_name() == "shelf" and shelf.found_heading.get_visible(), "and shown though no title fits")
+    check(all(len(group.rows) == 3 for group in found()) and found()[0].group.get_description() == "120 passages",
+          f"a few passages of each book, with how many there are ({found()[0].group.get_description()})")
+    check("<b>Sentence number 3</b>" in found()[0].rows[0].get_title(), "with the words in bold")
+    check(shelf.scope_choice.get_visible(), "the search can be limited to a category")
+    shelf.scope_choice.set_selected(shelf._scopes.index(studium))
+    check(wait_for(lambda: [g.book for g in found()] == [studium / "d.epub"], 5), "and then finds only what is in it")
+    check(not shelf.sections[romane].get_visible(), "also among the titles")
+    shelf.scope_choice.set_selected(0)
+    check(wait_for(lambda: len(found()) == 5, 5), "all categories again")
+    shelf.search_entry.set_text("Sentence number 3 of the chapter called Chapter 2")
+    check(wait_for(lambda: found() and found()[0].group.get_description() == "40 passages", 5), "several words are found as they stand")
     shelf.search_entry.set_text("gibt es nicht")
     check(wait_for(lambda: shelf.stack.get_visible_child_name() == "no-results"), "no match says so")
     shelf.search_entry.set_text("")
@@ -974,10 +997,47 @@ def scenario(app, window):
     reader.split.set_show_sidebar(False)
     window.navigation.pop()
     wait_for(lambda: window.navigation.get_visible_page() is shelf)
+
+    print("Searching the library")
+    wait_for(lambda: not shelf.indexer.busy, 30)
+    shelf.search_button.set_active(True)
+    shelf.search_entry.set_text("heading")
+    found = lambda: list(children(shelf.found_list))
+    group = lambda: next((g for g in found() if g.book == LIB / "notes.epub"), None)
+    check(wait_for(lambda: group() is not None, 5), "a passage of a book is found")
+    check(len(group().rows) == 3 and "after the" in group().rows[1].get_title(), "in the order of the book")
+    group().rows[1].emit("activated")
+    check(wait_for(lambda: reader.opened and window.navigation.get_visible_page() is reader), "a click opens the book")
+    check(wait_for(lambda: reader.search_entry.get_text() == "heading", 3), "with the search in the book")
+    check(wait_for(lambda: reader.result_list.get_selected_row() is not None, 10)
+          and reader.result_list.get_selected_row().get_index() == 1, "at the result that was clicked, not the first one")
+    in_view = "document.querySelector('foliate-view').lastLocation?.range?.toString().includes('after the heading') ?? false"
+    check(wait_for(lambda: js(reader, in_view), 5), "which is in view")
+    reader.search_entry.set_text("")
+    reader.split.set_show_sidebar(False)
+    window.navigation.pop()
+    wait_for(lambda: window.navigation.get_visible_page() is shelf)
+    own_note = NotesFile(LIB / "notes.epub").add(entry.cfi, "A paragraph of its own", "A library harvest note", "One", color="green")
+    shelf.search_entry.set_text("library harvest")
+    check(wait_for(lambda: group() is not None and group().rows[0].kind == "note", 5), "the reader's own notes are found too")
+    check("note-tint-green" in group().rows[0].get_css_classes() and "1 own note" in group().group.get_description(),
+          f"in the color of their mark ({group().group.get_description()})")
+    group().rows[0].emit("activated")
+    check(wait_for(lambda: reader.opened and reader.notes_button.get_active(), 10), "a click opens the book at the note")
+    reader.search_entry.set_text("")
+    reader.split.set_show_sidebar(False)
+    reader.notes_button.set_active(False)
+    window.navigation.pop()
+    check(wait_for(lambda: window.navigation.get_visible_page() is shelf), "back on the shelf")
+    NotesFile(LIB / "notes.epub").remove(own_note.id)
+    shelf.search_entry.set_text("")
+    shelf.search_button.set_active(False)
+    window.state.set_position(was_book.info.key, entry.cfi, 0.5, time.time())  # a place in another book
     shelf.open_card(was_book)
     shelf.open_card(was_book)
-    check(wait_for(lambda: reader.opened), "back to the other book")
+    check(wait_for(lambda: reader.opened), "back to the other book, also right after leaving one")
     check(window.navigation.get_navigation_stack().get_n_items() == 2, "a double click opens the book only once")
+    check(wait_for(lambda: (js(reader, "endpaper.diagnostics()") or {}).get("cfi")), "a saved place that does not fit opens the start")
     wait_for(lambda: (js(reader, "endpaper.diagnostics()") or {}).get("cfi"))
 
     print("Answer fields")

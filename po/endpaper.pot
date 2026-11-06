@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: endpaper\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-06 12:48+0100\n"
+"POT-Creation-Date: 2026-11-06 14:10+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -23,190 +23,190 @@ msgstr ""
 msgid "translator-credits"
 msgstr ""
 
-#: src/endpaper/reader_view.py:59
+#: src/endpaper/reader_view.py:60
 msgid "Yellow"
 msgstr ""
 
-#: src/endpaper/reader_view.py:59
+#: src/endpaper/reader_view.py:60
 msgid "Green"
 msgstr ""
 
-#: src/endpaper/reader_view.py:59
+#: src/endpaper/reader_view.py:60
 msgid "Blue"
 msgstr ""
 
-#: src/endpaper/reader_view.py:59
+#: src/endpaper/reader_view.py:60
 msgid "Pink"
 msgstr ""
 
-#: src/endpaper/reader_view.py:59
+#: src/endpaper/reader_view.py:60
 msgid "Purple"
 msgstr ""
 
-#: src/endpaper/reader_view.py:63
+#: src/endpaper/reader_view.py:64
 msgid "Light"
 msgstr ""
 
-#: src/endpaper/reader_view.py:63
+#: src/endpaper/reader_view.py:64
 msgid "Sepia"
 msgstr ""
 
-#: src/endpaper/reader_view.py:63
+#: src/endpaper/reader_view.py:64
 msgid "Sage"
 msgstr ""
 
-#: src/endpaper/reader_view.py:63
+#: src/endpaper/reader_view.py:64
 msgid "Dark"
 msgstr ""
 
-#: src/endpaper/reader_view.py:63
+#: src/endpaper/reader_view.py:64
 msgid "Black"
 msgstr ""
 
-#: src/endpaper/reader_view.py:147
+#: src/endpaper/reader_view.py:148
 msgid "Book"
 msgstr ""
 
-#: src/endpaper/reader_view.py:178 src/endpaper/reader_view.py:211
-#: src/endpaper/reader_view.py:226 src/endpaper/reader_view.py:1301
-#: src/endpaper/window.py:149
+#: src/endpaper/reader_view.py:182 src/endpaper/reader_view.py:215
+#: src/endpaper/reader_view.py:230 src/endpaper/reader_view.py:1329
+#: src/endpaper/window.py:154
 msgid "Table of Contents"
 msgstr ""
 
-#: src/endpaper/reader_view.py:180 src/endpaper/window.py:148
+#: src/endpaper/reader_view.py:184 src/endpaper/window.py:153
 msgid "Back to Where You Were"
 msgstr ""
 
-#: src/endpaper/reader_view.py:185 src/endpaper/shelf.py:348
-#: src/endpaper/window.py:176
+#: src/endpaper/reader_view.py:189 src/endpaper/shelf.py:356
+#: src/endpaper/window.py:181
 msgid "Keyboard Shortcuts"
 msgstr ""
 
-#: src/endpaper/reader_view.py:186 src/endpaper/shelf.py:349
+#: src/endpaper/reader_view.py:190 src/endpaper/shelf.py:357
 msgid "About Endpaper"
 msgstr ""
 
-#: src/endpaper/reader_view.py:187 src/endpaper/shelf.py:351
+#: src/endpaper/reader_view.py:191 src/endpaper/shelf.py:359
 msgid "Main Menu"
 msgstr ""
 
-#: src/endpaper/reader_view.py:189 src/endpaper/reader_view.py:190
-#: src/endpaper/reader_view.py:247 src/endpaper/window.py:152
+#: src/endpaper/reader_view.py:193 src/endpaper/reader_view.py:194
+#: src/endpaper/reader_view.py:252 src/endpaper/window.py:157
 #: src/endpaper/notes_panel.py:106
 msgid "Notes"
 msgstr ""
 
-#: src/endpaper/reader_view.py:198 src/endpaper/reader_view.py:248
+#: src/endpaper/reader_view.py:202 src/endpaper/reader_view.py:253
 msgid "Bookmarks"
 msgstr ""
 
-#: src/endpaper/reader_view.py:200
+#: src/endpaper/reader_view.py:204
 msgid "No Bookmarks Yet"
 msgstr ""
 
-#: src/endpaper/reader_view.py:201
+#: src/endpaper/reader_view.py:205
 msgid "Press Ctrl+D or use the button below the text."
 msgstr ""
 
-#: src/endpaper/reader_view.py:221 src/endpaper/window.py:147
+#: src/endpaper/reader_view.py:225 src/endpaper/window.py:152
 msgid "Previous Page"
 msgstr ""
 
-#: src/endpaper/reader_view.py:222 src/endpaper/window.py:146
+#: src/endpaper/reader_view.py:226 src/endpaper/window.py:151
 msgid "Next Page"
 msgstr ""
 
-#: src/endpaper/reader_view.py:242 src/endpaper/reader_view.py:244
+#: src/endpaper/reader_view.py:247 src/endpaper/reader_view.py:249
 msgid "Double Width"
 msgstr ""
 
-#: src/endpaper/reader_view.py:299 src/endpaper/reader_view.py:301
-#: src/endpaper/reader_view.py:338 src/endpaper/reader_view.py:340
-#: src/endpaper/window.py:168
+#: src/endpaper/reader_view.py:304 src/endpaper/reader_view.py:306
+#: src/endpaper/reader_view.py:343 src/endpaper/reader_view.py:345
+#: src/endpaper/window.py:173
 msgid "Underline"
 msgstr ""
 
-#: src/endpaper/reader_view.py:306
+#: src/endpaper/reader_view.py:311
 msgid "Set a Bookmark (Ctrl+D)"
 msgstr ""
 
-#: src/endpaper/reader_view.py:308
+#: src/endpaper/reader_view.py:313
 msgid "Set a Bookmark"
 msgstr ""
 
-#: src/endpaper/reader_view.py:313
+#: src/endpaper/reader_view.py:318
 msgid "Text and Layout"
 msgstr ""
 
-#: src/endpaper/reader_view.py:320
+#: src/endpaper/reader_view.py:325
 msgid "Done"
 msgstr ""
 
-#: src/endpaper/reader_view.py:320
+#: src/endpaper/reader_view.py:325
 msgid "Stop Marking (Esc)"
 msgstr ""
 
-#: src/endpaper/reader_view.py:344 src/endpaper/reader_view.py:346
+#: src/endpaper/reader_view.py:349 src/endpaper/reader_view.py:351
 msgid "Remove Mark"
 msgstr ""
 
-#: src/endpaper/reader_view.py:350 src/endpaper/notes_panel.py:180
+#: src/endpaper/reader_view.py:355 src/endpaper/notes_panel.py:180
 msgid "Add Note"
 msgstr ""
 
-#: src/endpaper/reader_view.py:379
+#: src/endpaper/reader_view.py:384
 msgid "Click the paragraph for the bookmark."
 msgstr ""
 
-#: src/endpaper/reader_view.py:382 src/endpaper/reader_view.py:1123
+#: src/endpaper/reader_view.py:387 src/endpaper/reader_view.py:1132
 msgid "Click the first word, then the last. Double-click marks one word."
 msgstr ""
 
-#: src/endpaper/reader_view.py:466
+#: src/endpaper/reader_view.py:471
 msgid "Left as it is, so that nothing you wrote gets lost"
 msgstr ""
 
-#: src/endpaper/reader_view.py:475
+#: src/endpaper/reader_view.py:480
 msgid "Change restored"
 msgstr ""
 
-#: src/endpaper/reader_view.py:475
+#: src/endpaper/reader_view.py:480
 msgid "Change undone"
 msgstr ""
 
-#: src/endpaper/reader_view.py:477
+#: src/endpaper/reader_view.py:482
 msgid "There is nothing to restore"
 msgstr ""
 
-#: src/endpaper/reader_view.py:477
+#: src/endpaper/reader_view.py:482
 msgid "There is nothing to undo"
 msgstr ""
 
-#: src/endpaper/reader_view.py:487
+#: src/endpaper/reader_view.py:492
 msgid "The notes could not be saved. They are kept until the book is closed."
 msgstr ""
 
-#: src/endpaper/reader_view.py:555 src/endpaper/reader_view.py:569
+#: src/endpaper/reader_view.py:560 src/endpaper/reader_view.py:574
 msgid "Bookmark removed"
 msgstr ""
 
-#: src/endpaper/reader_view.py:558
+#: src/endpaper/reader_view.py:563
 msgid "Bookmark set"
 msgstr ""
 
-#: src/endpaper/reader_view.py:592
+#: src/endpaper/reader_view.py:597
 msgid "Bookmark without text"
 msgstr ""
 
-#: src/endpaper/reader_view.py:595 src/endpaper/reader_view.py:597
+#: src/endpaper/reader_view.py:600 src/endpaper/reader_view.py:602
 msgid "Remove Bookmark"
 msgstr ""
 
-#: src/endpaper/reader_view.py:725
+#: src/endpaper/reader_view.py:730
 msgid "Remove Mark and Notes?"
 msgstr ""
 
-#: src/endpaper/reader_view.py:727
+#: src/endpaper/reader_view.py:732
 #, python-brace-format
 msgid ""
 "The mark and its note will be removed. You can bring them back with Ctrl+Z "
@@ -217,369 +217,412 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/endpaper/reader_view.py:732 src/endpaper/shelf.py:700
-#: src/endpaper/shelf.py:719 src/endpaper/shelf.py:772
-#: src/endpaper/window.py:102 src/endpaper/notes_panel.py:275
+#: src/endpaper/reader_view.py:737 src/endpaper/shelf.py:849
+#: src/endpaper/shelf.py:868 src/endpaper/shelf.py:921
+#: src/endpaper/window.py:106 src/endpaper/notes_panel.py:275
 msgid "Cancel"
 msgstr ""
 
-#: src/endpaper/reader_view.py:733 src/endpaper/notes_panel.py:276
+#: src/endpaper/reader_view.py:738 src/endpaper/notes_panel.py:276
 msgid "Remove"
 msgstr ""
 
-#: src/endpaper/reader_view.py:774
+#: src/endpaper/reader_view.py:779
 msgid ""
 "The notes of this book could not be read. Marking is off, nothing was "
 "changed."
 msgstr ""
 
-#: src/endpaper/reader_view.py:781
+#: src/endpaper/reader_view.py:786
 msgid ""
 "The notes file of this book is damaged. It stays as it is, new marks go to a "
 "file beside it."
 msgstr ""
 
-#: src/endpaper/reader_view.py:856
+#: src/endpaper/reader_view.py:861
 msgid "Text Size (%)"
 msgstr ""
 
-#: src/endpaper/reader_view.py:860
+#: src/endpaper/reader_view.py:865
 msgid "Font"
 msgstr ""
 
-#: src/endpaper/reader_view.py:860
+#: src/endpaper/reader_view.py:865
 msgid "As in the Book"
 msgstr ""
 
-#: src/endpaper/reader_view.py:860
+#: src/endpaper/reader_view.py:865
 msgid "Serif"
 msgstr ""
 
-#: src/endpaper/reader_view.py:860
+#: src/endpaper/reader_view.py:865
 msgid "Sans Serif"
 msgstr ""
 
-#: src/endpaper/reader_view.py:861
+#: src/endpaper/reader_view.py:866
 msgid "Line Spacing"
 msgstr ""
 
-#: src/endpaper/reader_view.py:861
+#: src/endpaper/reader_view.py:866
 msgid "Compact"
 msgstr ""
 
-#: src/endpaper/reader_view.py:861 src/endpaper/reader_view.py:862
+#: src/endpaper/reader_view.py:866 src/endpaper/reader_view.py:867
 msgid "Normal"
 msgstr ""
 
-#: src/endpaper/reader_view.py:861
+#: src/endpaper/reader_view.py:866
 msgid "Relaxed"
 msgstr ""
 
-#: src/endpaper/reader_view.py:862
+#: src/endpaper/reader_view.py:867
 msgid "Text Width"
 msgstr ""
 
-#: src/endpaper/reader_view.py:862
+#: src/endpaper/reader_view.py:867
 msgid "Narrow"
 msgstr ""
 
-#: src/endpaper/reader_view.py:862
+#: src/endpaper/reader_view.py:867
 msgid "Wide"
 msgstr ""
 
-#: src/endpaper/reader_view.py:863
+#: src/endpaper/reader_view.py:868
 msgid "Hyphenation"
 msgstr ""
 
-#: src/endpaper/reader_view.py:870
+#: src/endpaper/reader_view.py:875
 msgid "Layout"
 msgstr ""
 
-#: src/endpaper/reader_view.py:870
+#: src/endpaper/reader_view.py:875
 msgid "Pages"
 msgstr ""
 
-#: src/endpaper/reader_view.py:870
+#: src/endpaper/reader_view.py:875
 msgid "Continuous Scrolling"
 msgstr ""
 
 #. Translators: shown on the buttons for the colors of the pages, as a sample of the text
-#: src/endpaper/reader_view.py:886
+#: src/endpaper/reader_view.py:891
 msgid "Aa"
 msgstr ""
 
-#: src/endpaper/reader_view.py:892
+#: src/endpaper/reader_view.py:897
 msgid "Follow the System"
 msgstr ""
 
-#: src/endpaper/reader_view.py:892
+#: src/endpaper/reader_view.py:897
 msgid "Light or dark, as the system is set"
 msgstr ""
 
-#: src/endpaper/reader_view.py:936 src/endpaper/notes_panel.py:175
+#: src/endpaper/reader_view.py:941 src/endpaper/notes_panel.py:175
 msgid "Go to This Place"
 msgstr ""
 
-#: src/endpaper/reader_view.py:981
+#: src/endpaper/reader_view.py:986
 msgid "Book Text"
 msgstr ""
 
-#: src/endpaper/reader_view.py:1036
+#: src/endpaper/reader_view.py:1041
 msgid "The book could not be shown any further."
 msgstr ""
 
-#: src/endpaper/reader_view.py:1050 src/endpaper/reader_view.py:1146
+#: src/endpaper/reader_view.py:1055 src/endpaper/reader_view.py:1155
 msgid "This picture cannot be shown."
 msgstr ""
 
-#: src/endpaper/reader_view.py:1058
+#: src/endpaper/reader_view.py:1063
 msgid "Picture"
 msgstr ""
 
-#: src/endpaper/reader_view.py:1122
+#: src/endpaper/reader_view.py:1131
 msgid "Now click the last word. A second click on this word marks only it."
 msgstr ""
 
-#: src/endpaper/reader_view.py:1126
+#: src/endpaper/reader_view.py:1135
 msgid "A mark cannot go across chapters. This word is the new start."
 msgstr ""
 
-#: src/endpaper/reader_view.py:1128
+#: src/endpaper/reader_view.py:1137
 msgid "There is no mark at this word."
 msgstr ""
 
-#: src/endpaper/reader_view.py:1154 src/endpaper/shelf.py:600
+#: src/endpaper/reader_view.py:1163 src/endpaper/shelf.py:680
+#: src/endpaper/shelf.py:749
 msgid "This file could not be opened as a book."
 msgstr ""
 
-#: src/endpaper/reader_view.py:1203 src/endpaper/shelf.py:136
+#: src/endpaper/reader_view.py:1216 src/endpaper/shelf.py:139
 #, python-brace-format
 msgid "{percent}%"
 msgstr ""
 
-#: src/endpaper/reader_view.py:1247 src/endpaper/reader_view.py:1248
-#: src/endpaper/window.py:150
+#: src/endpaper/reader_view.py:1260 src/endpaper/reader_view.py:1261
+#: src/endpaper/window.py:155
 msgid "Search in the Book"
 msgstr ""
 
-#: src/endpaper/reader_view.py:1265 src/endpaper/reader_view.py:1303
+#: src/endpaper/reader_view.py:1278 src/endpaper/reader_view.py:1331
 msgid "Search Results"
 msgstr ""
 
-#: src/endpaper/reader_view.py:1267
+#: src/endpaper/reader_view.py:1280
 msgid "Nothing Found"
 msgstr ""
 
-#: src/endpaper/reader_view.py:1268
+#: src/endpaper/reader_view.py:1281
 msgid "Try another or a shorter word."
 msgstr ""
 
-#: src/endpaper/reader_view.py:1305
+#: src/endpaper/reader_view.py:1333
 msgid "Searching…"
 msgstr ""
 
-#: src/endpaper/reader_view.py:1336
+#: src/endpaper/reader_view.py:1369
 #, python-brace-format
 msgid "{count} found so far…"
 msgid_plural "{count} found so far…"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/endpaper/reader_view.py:1341
+#: src/endpaper/reader_view.py:1374
 #, python-brace-format
 msgid "Searching… {percent}%"
 msgstr ""
 
-#: src/endpaper/reader_view.py:1344
+#: src/endpaper/reader_view.py:1377
 #, python-brace-format
 msgid "{count} result"
 msgid_plural "{count} results"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/endpaper/reader_view.py:1378 src/endpaper/notes_panel.py:29
+#: src/endpaper/reader_view.py:1394 src/endpaper/shelf.py:658
+#: src/endpaper/notes_panel.py:29
 msgid "Note"
 msgstr ""
 
-#: src/endpaper/reader_view.py:1378
+#: src/endpaper/reader_view.py:1394 src/endpaper/shelf.py:658
 msgid "Your Answer"
-msgstr ""
-
-#: src/endpaper/shelf.py:21
-#, python-brace-format
-msgid "“{name}” already exists."
-msgstr ""
-
-#: src/endpaper/shelf.py:23
-msgid "This name cannot be used."
 msgstr ""
 
 #: src/endpaper/shelf.py:24
 #, python-brace-format
+msgid "“{name}” already exists."
+msgstr ""
+
+#: src/endpaper/shelf.py:26
+msgid "This name cannot be used."
+msgstr ""
+
+#: src/endpaper/shelf.py:27
+#, python-brace-format
 msgid "That did not work: {reason}"
 msgstr ""
 
-#: src/endpaper/shelf.py:113
+#: src/endpaper/shelf.py:116
 msgid "Cannot be read"
 msgstr ""
 
-#: src/endpaper/shelf.py:122 src/endpaper/shelf.py:568
+#: src/endpaper/shelf.py:125 src/endpaper/shelf.py:717
 msgid "Unpin"
 msgstr ""
 
-#: src/endpaper/shelf.py:122 src/endpaper/shelf.py:568
+#: src/endpaper/shelf.py:125 src/endpaper/shelf.py:717
 msgid "Pin"
 msgstr ""
 
-#: src/endpaper/shelf.py:134
+#: src/endpaper/shelf.py:137
 msgid "Pinned"
 msgstr ""
 
-#: src/endpaper/shelf.py:194
+#: src/endpaper/shelf.py:197
 msgid "Category Menu"
 msgstr ""
 
-#: src/endpaper/shelf.py:214
+#: src/endpaper/shelf.py:217
 msgid "No books here yet. Drag them here or add them from the menu."
 msgstr ""
 
-#: src/endpaper/shelf.py:236 src/endpaper/shelf.py:261
-#: src/endpaper/shelf.py:573 src/endpaper/shelf.py:769
+#: src/endpaper/shelf.py:239 src/endpaper/shelf.py:264
+#: src/endpaper/shelf.py:569 src/endpaper/shelf.py:722
+#: src/endpaper/shelf.py:918
 msgid "Without Category"
 msgstr ""
 
-#: src/endpaper/shelf.py:262
+#: src/endpaper/shelf.py:265
 #, python-brace-format
 msgid "{count} book"
 msgid_plural "{count} books"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/endpaper/shelf.py:265
+#: src/endpaper/shelf.py:268
 msgid "Unfold"
 msgstr ""
 
-#: src/endpaper/shelf.py:265
+#: src/endpaper/shelf.py:268
 msgid "Fold"
 msgstr ""
 
-#: src/endpaper/shelf.py:332
+#: src/endpaper/shelf.py:340
 msgid "New Category…"
 msgstr ""
 
-#: src/endpaper/shelf.py:333 src/endpaper/shelf.py:379
-#: src/endpaper/shelf.py:552
+#: src/endpaper/shelf.py:341 src/endpaper/shelf.py:401
+#: src/endpaper/shelf.py:701
 msgid "Add Books…"
 msgstr ""
 
-#: src/endpaper/shelf.py:334 src/endpaper/shelf.py:773
+#: src/endpaper/shelf.py:342 src/endpaper/shelf.py:922
 msgid "Add"
 msgstr ""
 
-#: src/endpaper/shelf.py:337 src/endpaper/window.py:134
-msgid "Find a Book"
+#: src/endpaper/shelf.py:345
+msgid "Search the Library"
 msgstr ""
 
-#: src/endpaper/shelf.py:342
+#: src/endpaper/shelf.py:350
 msgid "Title"
 msgstr ""
 
-#: src/endpaper/shelf.py:343
+#: src/endpaper/shelf.py:351
 msgid "Author"
 msgstr ""
 
-#: src/endpaper/shelf.py:344
+#: src/endpaper/shelf.py:352
 msgid "Recently Read"
 msgstr ""
 
-#: src/endpaper/shelf.py:345
+#: src/endpaper/shelf.py:353
 msgid "Sort By"
 msgstr ""
 
-#: src/endpaper/shelf.py:347 src/endpaper/shelf.py:370
+#: src/endpaper/shelf.py:355 src/endpaper/shelf.py:392
 msgid "Choose Library Folder…"
 msgstr ""
 
-#: src/endpaper/shelf.py:353
-msgid "Title or author"
+#: src/endpaper/shelf.py:361
+msgid "Title, author or words in the books"
 msgstr ""
 
-#: src/endpaper/shelf.py:375
+#: src/endpaper/shelf.py:363 src/endpaper/shelf.py:568
+msgid "All Categories"
+msgstr ""
+
+#: src/endpaper/shelf.py:364 src/endpaper/shelf.py:365
+msgid "Search In"
+msgstr ""
+
+#: src/endpaper/shelf.py:382
+msgid "In the Text"
+msgstr ""
+
+#: src/endpaper/shelf.py:397
 msgid "Welcome to Endpaper"
 msgstr ""
 
-#: src/endpaper/shelf.py:376
+#: src/endpaper/shelf.py:398
 msgid ""
 "Choose a folder for your books. Each of its subfolders becomes a category on "
 "your shelf."
 msgstr ""
 
-#: src/endpaper/shelf.py:384
+#: src/endpaper/shelf.py:406
 msgid "Your Shelf Is Empty"
 msgstr ""
 
-#: src/endpaper/shelf.py:385
+#: src/endpaper/shelf.py:407
 msgid ""
 "Add EPUB books, or drag them here. They are copied into your library folder."
 msgstr ""
 
-#: src/endpaper/shelf.py:387
+#: src/endpaper/shelf.py:409
 msgid "No Books Found"
 msgstr ""
 
-#: src/endpaper/shelf.py:554 src/endpaper/shelf.py:581
+#: src/endpaper/shelf.py:608
+#, python-brace-format
+msgid "Not all books have been read for the search yet: {done} of {total}."
+msgstr ""
+
+#: src/endpaper/shelf.py:644
+#, python-brace-format
+msgid "{count} passage"
+msgid_plural "{count} passages"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/endpaper/shelf.py:646
+#, python-brace-format
+msgid "{count} own note"
+msgid_plural "{count} own notes"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/endpaper/shelf.py:648
+msgid "Show All"
+msgstr ""
+
+#: src/endpaper/shelf.py:650
+#, python-brace-format
+msgid "Show all passages in “{title}”"
+msgstr ""
+
+#: src/endpaper/shelf.py:703 src/endpaper/shelf.py:730
 msgid "Rename…"
 msgstr ""
 
-#: src/endpaper/shelf.py:555 src/endpaper/shelf.py:582
-#: src/endpaper/shelf.py:701
+#: src/endpaper/shelf.py:704 src/endpaper/shelf.py:731
+#: src/endpaper/shelf.py:850
 msgid "Move to Trash"
 msgstr ""
 
-#: src/endpaper/shelf.py:567 src/endpaper/window.py:103
+#: src/endpaper/shelf.py:716 src/endpaper/window.py:107
 msgid "Open"
 msgstr ""
 
-#: src/endpaper/shelf.py:580
+#: src/endpaper/shelf.py:729
 msgid "Move To"
 msgstr ""
 
-#: src/endpaper/shelf.py:643
+#: src/endpaper/shelf.py:792
 msgid "Rename Book"
 msgstr ""
 
-#: src/endpaper/shelf.py:643 src/endpaper/shelf.py:687
+#: src/endpaper/shelf.py:792 src/endpaper/shelf.py:836
 msgid "Rename"
 msgstr ""
 
-#: src/endpaper/shelf.py:650 src/endpaper/shelf.py:708
+#: src/endpaper/shelf.py:799 src/endpaper/shelf.py:857
 #, python-brace-format
 msgid "“{title}” was moved to the trash."
 msgstr ""
 
-#: src/endpaper/shelf.py:658
+#: src/endpaper/shelf.py:807
 #, python-brace-format
 msgid "Could not move to the trash: {reason}"
 msgstr ""
 
-#: src/endpaper/shelf.py:674 src/endpaper/window.py:132
+#: src/endpaper/shelf.py:823 src/endpaper/window.py:137
 msgid "New Category"
 msgstr ""
 
-#: src/endpaper/shelf.py:674
+#: src/endpaper/shelf.py:823
 msgid "Create"
 msgstr ""
 
-#: src/endpaper/shelf.py:687
+#: src/endpaper/shelf.py:836
 msgid "Rename Category"
 msgstr ""
 
-#: src/endpaper/shelf.py:693
+#: src/endpaper/shelf.py:842
 #, python-brace-format
 msgid "Move “{name}” to the Trash?"
 msgstr ""
 
-#: src/endpaper/shelf.py:695
+#: src/endpaper/shelf.py:844
 #, python-brace-format
 msgid ""
 "The folder goes to the trash with {count} book. You can restore it from "
@@ -590,138 +633,142 @@ msgid_plural ""
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/endpaper/shelf.py:714
+#: src/endpaper/shelf.py:863
 msgid "Name"
 msgstr ""
 
-#: src/endpaper/shelf.py:737
+#: src/endpaper/shelf.py:886
 msgid "EPUB Books"
 msgstr ""
 
-#: src/endpaper/shelf.py:753 src/endpaper/window.py:133
+#: src/endpaper/shelf.py:902 src/endpaper/window.py:138
 msgid "Add Books"
 msgstr ""
 
-#: src/endpaper/shelf.py:768
+#: src/endpaper/shelf.py:917
 msgid "Add to Which Category?"
 msgstr ""
 
-#: src/endpaper/shelf.py:801
+#: src/endpaper/shelf.py:950
 #, python-brace-format
 msgid "{count} book added."
 msgid_plural "{count} books added."
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/endpaper/shelf.py:809
+#: src/endpaper/shelf.py:958
 msgid "Choose Library Folder"
 msgstr ""
 
-#: src/endpaper/window.py:101
+#: src/endpaper/window.py:105
 msgid "Open Link in Browser?"
 msgstr ""
 
-#: src/endpaper/window.py:130
+#: src/endpaper/window.py:135
 msgid "Bookshelf"
 msgstr ""
 
-#: src/endpaper/window.py:135
-msgid "Pin or Unpin the Book"
-msgstr ""
-
-#: src/endpaper/window.py:136
-msgid "Rename the Book"
-msgstr ""
-
-#: src/endpaper/window.py:137
-msgid "Move the Book to the Trash"
-msgstr ""
-
-#: src/endpaper/window.py:138
-msgid "Move the Book to the Previous Category"
-msgstr ""
-
 #: src/endpaper/window.py:139
-msgid "Move the Book to the Next Category"
+msgid "Find a Book"
 msgstr ""
 
 #: src/endpaper/window.py:140
-msgid "Book Menu"
+msgid "Pin or Unpin the Book"
+msgstr ""
+
+#: src/endpaper/window.py:141
+msgid "Rename the Book"
+msgstr ""
+
+#: src/endpaper/window.py:142
+msgid "Move the Book to the Trash"
+msgstr ""
+
+#: src/endpaper/window.py:143
+msgid "Move the Book to the Previous Category"
 msgstr ""
 
 #: src/endpaper/window.py:144
+msgid "Move the Book to the Next Category"
+msgstr ""
+
+#: src/endpaper/window.py:145
+msgid "Book Menu"
+msgstr ""
+
+#: src/endpaper/window.py:149
 msgid "Reading"
 msgstr ""
 
-#: src/endpaper/window.py:151
+#: src/endpaper/window.py:156
 msgid "Next or Previous Result"
 msgstr ""
 
-#: src/endpaper/window.py:153
+#: src/endpaper/window.py:158
 msgid "Set or Remove a Bookmark"
 msgstr ""
 
-#: src/endpaper/window.py:154
+#: src/endpaper/window.py:159
 msgid "Larger Text"
 msgstr ""
 
-#: src/endpaper/window.py:155
+#: src/endpaper/window.py:160
 msgid "Smaller Text"
 msgstr ""
 
-#: src/endpaper/window.py:156
+#: src/endpaper/window.py:161
 msgid "Normal Text Size"
 msgstr ""
 
-#: src/endpaper/window.py:157
+#: src/endpaper/window.py:162
 msgid "Back to the Shelf"
 msgstr ""
 
-#: src/endpaper/window.py:161
+#: src/endpaper/window.py:166
 msgid "Marking"
 msgstr ""
 
-#: src/endpaper/window.py:163
+#: src/endpaper/window.py:168
 msgid "Start or Stop Marking"
 msgstr ""
 
-#: src/endpaper/window.py:164
+#: src/endpaper/window.py:169
 msgid "Go to Another Word"
 msgstr ""
 
-#: src/endpaper/window.py:165
+#: src/endpaper/window.py:170
 msgid "Choose the First or Last Word"
 msgstr ""
 
-#: src/endpaper/window.py:166
+#: src/endpaper/window.py:171
 msgid "Forget the Chosen Word, Then Stop Marking"
 msgstr ""
 
-#: src/endpaper/window.py:167
+#: src/endpaper/window.py:172
 msgid "Choose a Color"
 msgstr ""
 
-#: src/endpaper/window.py:169
+#: src/endpaper/window.py:174
 msgid "Options of the Mark at This Word"
 msgstr ""
 
-#: src/endpaper/window.py:170
+#: src/endpaper/window.py:175
 msgid "Undo the Last Change to a Mark"
 msgstr ""
 
-#: src/endpaper/window.py:171
+#: src/endpaper/window.py:176
 msgid "Restore the Change"
 msgstr ""
 
-#: src/endpaper/window.py:175
+#: src/endpaper/window.py:180
 msgid "General"
 msgstr ""
 
-#: src/endpaper/window.py:176
+#: src/endpaper/window.py:181
 msgid "Close Window"
 msgstr ""
 
-#: src/endpaper/window.py:176
+#: src/endpaper/window.py:181
 msgid "Quit"
 msgstr ""
 

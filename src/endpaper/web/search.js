@@ -108,6 +108,17 @@ export const excerptOf = (range, marks) => {
     return partsOf([...before, ...tidy(word), ...after])
 }
 
+// The element the library search found a passage in, by its places among the element children.
+const elementAt = (doc, path) => {
+    let element = doc?.documentElement
+    for (const place of path ?? []) element = element?.children[place]
+    return element ?? null
+}
+
+// Whether a range starts in the element or after it.
+const atOrAfter = (range, element) => element.contains(range.startContainer)
+    || !!(element.compareDocumentPosition(range.startContainer) & Node.DOCUMENT_POSITION_FOLLOWING)
+
 export const createSearch = (view, post, { marks }) => {
     let run = 0 // the search going on, numbered by reader_view.py; another number makes it stop
     let queue = Promise.resolve()
@@ -151,7 +162,7 @@ export const createSearch = (view, post, { marks }) => {
         }
     })
 
-    const search = async (query, mine, extras) => {
+    const search = async (query, mine, extras, near) => {
         if (mine !== run) return
         clearCurrent()
         view.clearSearch()
@@ -201,6 +212,8 @@ export const createSearch = (view, post, { marks }) => {
                     sendWaiting(index)
                     const doc = searched
                     const inSection = doc ? marksIn(index, doc, marksBySection) : []
+                    // The result the library search led here: the first one in its passage, or after it.
+                    const target = near?.section === index ? elementAt(doc, near.path) : null
                     const found = result.subitems.map(({ cfi, excerpt }) => {
                         let range = null
                         try {
@@ -211,7 +224,12 @@ export const createSearch = (view, post, { marks }) => {
                         const parts = (range && excerptOf(range, inSection.filter(m => m.range))) ?? [
                             { text: excerpt.pre }, { text: excerpt.match, word: true }, { text: excerpt.post },
                         ]
-                        return { kind: 'text', cfi, parts }
+                        const item = { kind: 'text', cfi, parts }
+                        if (target && near && range && atOrAfter(range, target)) {
+                            item.near = true
+                            near = null
+                        }
+                        return item
                     })
                     const items = []
                     for (const item of found) {
@@ -239,10 +257,16 @@ export const createSearch = (view, post, { marks }) => {
     }
 
     return {
-        start(query, mine, extras = []) {
+        start(query, mine, extras = [], near = null) {
             run = mine
-            queue = queue.then(() => search(query, mine, extras))
+            queue = queue.then(() => search(query, mine, extras, near))
             return queue
+        },
+        async goToPassage(section, path) {
+            await view.goTo(section)
+            const doc = view.renderer.getContents().find(content => content.index === section)?.doc
+            const element = elementAt(doc, path)
+            if (element) await view.renderer.scrollToAnchor(element)
         },
         stop() {
             run = 0

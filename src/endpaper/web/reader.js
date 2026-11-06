@@ -9,8 +9,9 @@ import { createFields } from './fields.js'
 import { createPictures } from './pictures.js'
 import { createSearch } from './search.js'
 
+let opening = null // which opening of a book this page belongs to, said with every message
 const post = (type, data = {}) =>
-    window.webkit.messageHandlers.endpaper.postMessage(JSON.stringify({ type, ...data }))
+    window.webkit.messageHandlers.endpaper.postMessage(JSON.stringify({ type, opening, ...data }))
 
 const THEMES = {
     light: { bg: '#ffffff', fg: '#2e2e32', peek: 'rgba(247, 247, 250, .86)', scheme: 'light', adapt: false },
@@ -179,7 +180,8 @@ window.addEventListener('resize', () => {
 })
 
 window.endpaper = {
-    async open(url, name, nextSettings, position) {
+    async open(url, name, nextSettings, position, nextOpening) {
+        opening = nextOpening
         settings = nextSettings
         applyLayout()
         try {
@@ -220,7 +222,11 @@ window.endpaper = {
             document.body.append(view)
             await view.open(new File([blob], name, { type: 'application/epub+zip' }))
             applyLayout()
-            await view.init({ lastLocation: position, showTextStart: true })
+            try {
+                await view.init({ lastLocation: position, showTextStart: true })
+            } catch {
+                await view.init({ showTextStart: true }) // a saved place that does not fit this book
+            }
             // A saved position that no longer fits the book must not leave an empty page.
             if (!view.lastLocation) await view.goToTextStart()
             post('opened', { toc: flattenToc(view.book.toc) })
@@ -233,7 +239,8 @@ window.endpaper = {
         applyLayout()
     },
     goToHref: href => view?.goTo(href),
-    search(query, run, extras) { search?.start(query, run, extras) },
+    search(query, run, extras, near) { search?.start(query, run, extras, near) },
+    goToPassage(section, path) { search?.goToPassage(section, path) },
     stopSearch() { search?.stop() },
     goToFound(cfi) { search?.goTo(cfi) },
     goToField(key) { fields?.goTo(key) },

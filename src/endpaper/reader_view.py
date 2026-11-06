@@ -18,6 +18,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Soup, WebKit
 
 from . import config
 from .notes import DEFAULT_MARK_COLOR, MARK_COLORS, NotesError, NotesFile, NotesKept
+from .indexer import install_note_tints, parts_markup
 from .notes_panel import NotesPanel
 
 WEB_DIR = Path(__file__).parent / "web"
@@ -65,7 +66,7 @@ def _theme_name(theme: str) -> str:
 
 def _install_css() -> None:
     rules = "".join(
-        f".mark-{name} {{ background: {hex_color}; }} .note-tint-{name} {{ background-color: alpha({hex_color}, 0.32); }}"
+        f".mark-{name} {{ background: {hex_color}; }}"
         for name, hex_color in MARK_COLORS.items()
     )
     rules += "".join(
@@ -167,6 +168,9 @@ class ReaderPage(Adw.NavigationPage):
         self._save_timer = 0
         self._last_toc_href = None
         self.on_opened = None  # for tests
+        self._opening = 0  # counts the books opened, so that what the page says belongs to the book it is about
+        self._goal: dict | None = None  # where the library search leads in the book being opened
+        self._near: dict | None = None  # the passage whose result the next search should go to
         self.picture_dialog = None
         self._build()
         Adw.StyleManager.get_default().connect("notify::dark", lambda *_a: self._apply_settings(save=False))
@@ -229,6 +233,7 @@ class ReaderPage(Adw.NavigationPage):
             "active", self.split, "show-sidebar", GObject.BindingFlags.BIDIRECTIONAL
         )
         _install_css()
+        install_note_tints()
         self.overlay.add_overlay(self._build_mark_bar())
         self.mark_popover = self._build_mark_popover()
         escape = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
@@ -1095,6 +1100,8 @@ class ReaderPage(Adw.NavigationPage):
     def _on_message(self, _manager, value):
         message = json.loads(value.to_string())
         kind = message["type"]
+        if kind != "ready" and message.get("opening") != self._opening:
+            return  # left over from the book before, such as a late change of place
         if kind == "ready":
             if self.book_path:
                 arguments = [
@@ -1102,6 +1109,7 @@ class ReaderPage(Adw.NavigationPage):
                     self.book_path.name,
                     self._resolved_settings(),
                     self.state.position(self.book_key),
+                    self._opening,
                 ]
                 self._js(f"endpaper.open(...{json.dumps(arguments)})")
         elif kind == "opened":
@@ -1112,6 +1120,7 @@ class ReaderPage(Adw.NavigationPage):
             self._send_answers()
             self._bookmarks_changed()
             self._update_marking()
+            self._reach_goal()
             if self.on_opened:
                 self.on_opened()
         elif kind == "relocate":
@@ -1155,8 +1164,11 @@ class ReaderPage(Adw.NavigationPage):
 
     # --- Book ---------------------------------------------------------------------------
 
-    def open_book(self, path: Path, key: str, title: str) -> None:
+    def open_book(self, path: Path, key: str, title: str, goal: dict | None = None) -> None:
+        """goal: a place found by the library search, {"query", "section", "path"}, or only a query."""
         self.book_path, self.book_key = path, key
+        self._opening += 1
+        self._goal = goal
         self.opened = False
         self._in_field = False
         self.set_title(title)
@@ -1175,6 +1187,7 @@ class ReaderPage(Adw.NavigationPage):
         self.stop_marking()
         self._close_notes()
         self.book_path = self.book_key = None
+        self._opening += 1
         self.opened = False
         self._clear_toc()
         self.web.load_uri("about:blank")
@@ -1283,6 +1296,21 @@ class ReaderPage(Adw.NavigationPage):
         self.sidebar_pages.set_vexpand(True)
         return box
 
+    def _reach_goal(self):
+        goal, self._goal = self._goal, None
+        if not goal or not goal.get("query"):
+            return
+        if "section" in goal:
+            self._js(f"endpaper.goToPassage({int(goal['section'])}, {json.dumps(goal['path'])})")
+            self._near = {"section": int(goal["section"]), "path": goal["path"]}
+        elif goal.get("cfi"):  # a note: its mark, with the note open beside it
+            self._js(f"endpaper.goToFound({json.dumps(goal['cfi'])})")
+            self.show_mark_notes(goal["entry"])
+        elif goal.get("field"):
+            self._js(f"endpaper.goToField({json.dumps(goal['field'])})")
+        self.toc_button.set_active(True)
+        self.search_entry.set_text(goal["query"])
+
     def start_search(self):
         """Ctrl+F: the search field in the sidebar, with what was searched before ready to be replaced."""
         self.toc_button.set_active(True)
@@ -1305,7 +1333,8 @@ class ReaderPage(Adw.NavigationPage):
         self.search_status.set_label(_("Searching…"))
         self.search_status.set_visible(True)
         own = self.notes.search(query) if self.notes else []
-        self._js(f"endpaper.search({json.dumps(query)}, {self._search_run}, {json.dumps(own)})")
+        near, self._near = self._near, None
+        self._js(f"endpaper.search({json.dumps(query)}, {self._search_run}, {json.dumps(own)}, {json.dumps(near)})")
 
     def _end_search(self):
         if self.search_entry.get_text():
@@ -1329,7 +1358,11 @@ class ReaderPage(Adw.NavigationPage):
             return  # a search that has been replaced
         if kind == "search-results":
             for item in message["items"]:
-                self.result_list.append(self._result_row(message["chapter"], item))
+                row = self._result_row(message["chapter"], item)
+                self.result_list.append(row)
+                if item.get("near"):  # where the library search led
+                    self.result_list.select_row(row)
+                    self._go_to_result(row)
             self._result_total += len(message["items"])
             count = self._result_total
             self.search_status.set_label(
@@ -1346,28 +1379,11 @@ class ReaderPage(Adw.NavigationPage):
                 self.search_status.set_visible(False)
                 self.sidebar_pages.set_visible_child_name("nothing")
 
-    @staticmethod
-    def _parts_markup(parts: list[dict]) -> str:
-        """An excerpt with the found word in bold and the reader's marks in their color, as in the book."""
-        out = []
-        for part in parts:
-            text = GLib.markup_escape_text(part.get("text") or "")
-            if part.get("word"):
-                text = f"<b>{text}</b>"
-            color = part.get("color")
-            if color and re.fullmatch(r"#[0-9a-fA-F]{6}", color):
-                text = (
-                    f'<span underline="single" underline_color="{color}">{text}</span>' if part.get("underline")
-                    else f'<span background="{color}" bgalpha="45%">{text}</span>'
-                )
-            out.append(text)
-        return "".join(out)
-
     def _result_row(self, chapter: str, item: dict) -> Gtk.ListBoxRow:
         kind = item.get("kind", "text")
         label = Gtk.Label(
             xalign=0, wrap=True, wrap_mode=2, lines=3, ellipsize=3, use_markup=True,
-            label=self._parts_markup(item["parts"]),
+            label=parts_markup(item["parts"]),
         )
         classes = ["card", "activatable", "search-row"]
         if kind == "text":

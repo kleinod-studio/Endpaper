@@ -15,6 +15,7 @@ Your books stay plain `.epub` files in a folder of your choice, with one subfold
 - **Reading**: pages or continuous scrolling, with two pages side by side when the window is wide enough, five page colors, turned with the mouse, the scroll wheel or the keyboard. Every book remembers where you were. Footnotes and references show in a small popup at their mark, on hover or tap, without leaving the page. A click on a picture shows it large.
 - **Table of contents**: beside the text, with the current chapter highlighted (F9). After following a link, a button takes you back.
 - **Search in the book**: Ctrl+F lists every place by chapter, each with a short excerpt that shows your marks. Your notes and answers that match stand among them, in the order of the book. Enter goes from one to the next.
+- **Search in the library**: the search on the shelf finds titles and authors, and also the words in the text of every book and in your notes. Each book shows its first passages, and a click opens it right there. The text is read once in the background, into a cache that can always be thrown away.
 - **Your way of reading**: font, text size, line spacing, text width, hyphenation, and light, sepia or dark colors that also apply to books with colors of their own.
 - **Bookmarks**: Ctrl+D or a button below the text sets one on a paragraph. The list stands in the flyout beside your notes.
 - **Answer fields**: text fields and tick boxes of study editions work. What you enter is saved in the notes file beside the book, and the book itself stays as it is.

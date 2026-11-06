@@ -8,11 +8,16 @@ from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Pango
 
 from . import config, library
 from .book_info import BookInfo, BookInfoStore
+from .indexer import Indexer, install_note_tints, parts_markup
 from .library import Book, Category, LibraryError
+from .notes import NotesError, NotesFile
 
 COVER_WIDTH = 130
 COVER_HEIGHT = 190
 REFRESH_DELAY_MS = 400
+MIN_TEXT_QUERY = 3  # shorter words stand in nearly every book
+FOUND_COVER_WIDTH = 72  # the covers beside the passages, in the proportions of the shelf
+FOUND_COVER_HEIGHT = round(FOUND_COVER_WIDTH * COVER_HEIGHT / COVER_WIDTH)
 
 
 def error_text(error: Exception) -> str:
@@ -299,7 +304,8 @@ class CategorySection(Gtk.Box):
         self.flow.invalidate_filter()
         self.flow.invalidate_sort()
         if self.shelf.query:
-            self.set_visible(any(card.matches(self.shelf.query) for card in self.cards.values()))
+            in_scope = self.shelf.scope is None or self.shelf.scope == self.category.path
+            self.set_visible(in_scope and any(card.matches(self.shelf.query) for card in self.cards.values()))
         else:
             self.set_visible(True)
 
@@ -317,8 +323,12 @@ class ShelfPage(Adw.NavigationPage):
         self.sections: dict[Path, CategorySection] = {}
         self.categories: list[Category] = []
         self.query = ""
+        self.scope: Path | None = None  # the category the search is limited to
+        self._scopes: list[Path | None] = [None]
+        self._notes: dict[Path, tuple[tuple, NotesFile]] = {}  # read once, again when the file changes
         self.sort_mode = config.sort_mode()
         self.info_store = BookInfoStore()
+        self.indexer = Indexer(self._on_index_progress)
         self.monitors: dict[str, Gio.FileMonitor] = {}
         self._refresh_timer = 0
         self._install_actions()
@@ -334,7 +344,7 @@ class ShelfPage(Adw.NavigationPage):
         self.add_button = Gtk.MenuButton(icon_name="list-add-symbolic", tooltip_text=_("Add"), menu_model=add_menu)
         header.pack_start(self.add_button)
 
-        self.search_button = Gtk.ToggleButton(icon_name="system-search-symbolic", tooltip_text=_("Find a Book"))
+        self.search_button = Gtk.ToggleButton(icon_name="system-search-symbolic", tooltip_text=_("Search the Library"))
         header.pack_start(self.search_button)
 
         primary = Gio.Menu()
@@ -350,9 +360,16 @@ class ShelfPage(Adw.NavigationPage):
         primary.append_section(None, other)
         header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", tooltip_text=_("Main Menu"), menu_model=primary, primary=True))
 
-        self.search_entry = Gtk.SearchEntry(placeholder_text=_("Title or author"), hexpand=True)
+        self.search_entry = Gtk.SearchEntry(placeholder_text=_("Title, author or words in the books"), hexpand=True)
         self.search_entry.connect("search-changed", self._on_search)
-        clamp = Adw.Clamp(child=self.search_entry, maximum_size=480)
+        self.scope_list = Gtk.StringList.new([_("All Categories")])
+        self.scope_choice = Gtk.DropDown(model=self.scope_list, valign=Gtk.Align.CENTER, tooltip_text=_("Search In"))
+        self.scope_choice.update_property([Gtk.AccessibleProperty.LABEL], [_("Search In")])
+        self.scope_choice.connect("notify::selected", self._on_scope)
+        search_box = Gtk.Box(spacing=6)
+        search_box.append(self.search_entry)
+        search_box.append(self.scope_choice)
+        clamp = Adw.Clamp(child=search_box, maximum_size=640)
         self.search_bar = Gtk.SearchBar(child=clamp)
         self.search_bar.connect_entry(self.search_entry)
         self.search_button.bind_property(
@@ -362,10 +379,17 @@ class ShelfPage(Adw.NavigationPage):
         self.sections_box = Gtk.Box(
             orientation=Gtk.Orientation.VERTICAL, spacing=26, margin_top=18, margin_bottom=30, margin_start=18, margin_end=18,
         )
-        self.scroller = Gtk.ScrolledWindow(
-            child=Adw.Clamp(child=self.sections_box, maximum_size=1500, tightening_threshold=1200),
-            hscrollbar_policy=Gtk.PolicyType.NEVER,
-        )
+        # Below the books whose title or author fits: the places in the books where the words stand.
+        self.found_status = Gtk.Label(xalign=0, wrap=True, visible=False, css_classes=["dim-label"])
+        self.found_heading = Gtk.Label(label=_("In the Text"), xalign=0, visible=False, css_classes=["title-2"])
+        self.found_list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24)
+        found_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin_start=18, margin_end=18, margin_bottom=30)
+        for widget in (self.found_heading, self.found_status, self.found_list):
+            found_box.append(widget)
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        content.append(Adw.Clamp(child=self.sections_box, maximum_size=1500, tightening_threshold=1200))
+        content.append(Adw.Clamp(child=found_box, maximum_size=900))
+        self.scroller = Gtk.ScrolledWindow(child=content, hscrollbar_policy=Gtk.PolicyType.NEVER)
 
         choose = Gtk.Button(label=_("Choose Library Folder…"), halign=Gtk.Align.CENTER)
         choose.add_css_class("pill")
@@ -384,12 +408,12 @@ class ShelfPage(Adw.NavigationPage):
             icon_name="studio.kleinod.Endpaper-symbolic", title=_("Your Shelf Is Empty"),
             description=_("Add EPUB books, or drag them here. They are copied into your library folder."), child=add,
         )
-        no_results = Adw.StatusPage(icon_name="system-search-symbolic", title=_("No Books Found"))
+        self.no_results = Adw.StatusPage(icon_name="system-search-symbolic", title=_("No Books Found"))
 
         self.stack = Gtk.Stack()
         self.stack.add_named(no_library, "no-library")
         self.stack.add_named(empty, "empty")
-        self.stack.add_named(no_results, "no-results")
+        self.stack.add_named(self.no_results, "no-results")
         self.stack.add_named(self.scroller, "shelf")
 
         drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
@@ -458,6 +482,8 @@ class ShelfPage(Adw.NavigationPage):
             self.sections_box.reorder_child_after(section, previous)
             previous = section
         self._watch(self._folders_to_watch())
+        self._update_scopes()
+        self.indexer.update([book.path for category in self.categories for book in category.books])
         self._update_stack()
         return GLib.SOURCE_REMOVE
 
@@ -494,7 +520,8 @@ class ShelfPage(Adw.NavigationPage):
         has_books = any(c.books for c in self.categories)
         if not self.categories:
             self.stack.set_visible_child_name("empty")
-        elif self.query and not any(s.get_visible() for s in self.sections.values()):
+        elif self.query and not any(s.get_visible() for s in self.sections.values()) and not self.found_list.get_first_child():
+            self.no_results.set_description(self._index_note())
             self.stack.set_visible_child_name("no-results")
         else:
             self.stack.set_visible_child_name("shelf" if has_books or self.categories else "empty")
@@ -530,7 +557,155 @@ class ShelfPage(Adw.NavigationPage):
     def _apply_query(self):
         for section in self.sections.values():
             section.refilter()
+        self._show_found()
         self._update_stack()
+
+    def _update_scopes(self):
+        """The categories to limit the search to, keeping the one chosen if it is still there."""
+        scopes = [None] + [c.path for c in self.categories if c.books]
+        if scopes == self._scopes:
+            return
+        chosen = self.scope if self.scope in scopes else None
+        self._scopes = scopes
+        names = [_("All Categories")] + [
+            next(c.name or _("Without Category") for c in self.categories if c.path == path) for path in scopes[1:]]
+        self.scope_list.splice(0, self.scope_list.get_n_items(), names)
+        self.scope_choice.set_selected(scopes.index(chosen))
+        self.scope_choice.set_visible(len(scopes) > 2)
+
+    def _on_scope(self, choice, _param):
+        selected = choice.get_selected()
+        self.scope = self._scopes[selected] if 0 <= selected < len(self._scopes) else None
+        if self.query:
+            self._apply_query()
+
+    def _books_in_scope(self) -> list[Path]:
+        return [b.path for c in self.categories if self.scope in (None, c.path) for b in c.books]
+
+    def _search_notes(self, text: str, books: list[Path]) -> dict[Path, list[dict]]:
+        """The reader's own notes and answers in which the text stands, read from the notes beside each book."""
+        found = {}
+        for book in books:
+            path = library.notes_path_for(book)
+            try:
+                stat = path.stat()
+            except OSError:
+                self._notes.pop(book, None)
+                continue
+            stamp = (stat.st_size, stat.st_mtime_ns)
+            known = self._notes.get(book)
+            if known is None or known[0] != stamp:
+                try:
+                    known = (stamp, NotesFile(book))
+                except (NotesError, OSError):
+                    continue
+                self._notes[book] = known
+            if items := known[1].search(text):
+                found[book] = items
+        return found
+
+    def _index_note(self) -> str | None:
+        if not self.indexer.busy or not self.indexer.total:
+            return None
+        return _("Not all books have been read for the search yet: {done} of {total}.").format(
+            done=self.indexer.done, total=self.indexer.total)
+
+    def _on_index_progress(self, _done, _total):
+        if len(self.search_entry.get_text().strip()) >= MIN_TEXT_QUERY:
+            if self.indexer.busy:
+                self.found_status.set_label(self._index_note() or "")
+                self.no_results.set_description(self._index_note())
+            else:
+                self._apply_query()  # all books are in now
+
+    def _show_found(self):
+        while child := self.found_list.get_first_child():
+            self.found_list.remove(child)
+        text = self.search_entry.get_text().strip()
+        searching = len(text) >= MIN_TEXT_QUERY
+        books = self._books_in_scope() if searching else []
+        passages = {Path(item.book): item for item in self.indexer.search(text, [str(b) for b in books])} if books else {}
+        own = self._search_notes(text, books) if books else {}
+        # The books with the most finds first, the reader's own words counted alongside the text.
+        order = sorted(set(passages) | set(own), key=lambda book: (
+            -(len(own.get(book, [])) + (passages[book].count if book in passages else 0)), str(book)))
+        found = []
+        for book in order:
+            card = self._card_for(str(book))
+            if card is not None:
+                found.append(self._found_group(card, passages.get(book), own.get(book, []), text))
+                self.found_list.append(found[-1])
+        note = self._index_note() if searching else None
+        self.found_status.set_label(note or "")
+        self.found_status.set_visible(bool(note) and bool(found))
+        self.found_heading.set_visible(bool(found))
+
+    def _found_cover(self, card: BookCard, query: str) -> Gtk.Widget:
+        """The book's cover beside its passages, as on the shelf: the eye finds a book by it sooner than by its title.
+        A click opens the book like Show All, which is also the way there by keyboard."""
+        placeholder = Gtk.Label(
+            label=card.info.title, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR, justify=Gtk.Justification.CENTER,
+            lines=4, ellipsize=Pango.EllipsizeMode.END, max_width_chars=8, margin_start=4, margin_end=4,
+            css_classes=["dim-label", "caption"],
+        )
+        cover = Gtk.Overlay(child=placeholder, valign=Gtk.Align.START, overflow=Gtk.Overflow.HIDDEN, css_classes=["card"])
+        cover.set_size_request(FOUND_COVER_WIDTH, FOUND_COVER_HEIGHT)
+        if card.info.cover:
+            cover.add_overlay(Gtk.Picture.new_for_filename(card.info.cover))
+            cover.get_last_child().set_content_fit(Gtk.ContentFit.COVER)
+            cover.get_last_child().set_can_shrink(True)
+        cover.set_cursor(Gdk.Cursor.new_from_name("pointer"))
+        click = Gtk.GestureClick()
+        click.connect("released", lambda *_a: self.open_found(card, {"query": query}))
+        cover.add_controller(click)
+        return cover
+
+    def _found_group(self, card: BookCard, item, own: list[dict], query: str) -> Gtk.Box:
+        counts = []
+        if item:
+            counts.append(ngettext("{count} passage", "{count} passages", item.count).format(count=item.count))
+        if own:
+            counts.append(ngettext("{count} own note", "{count} own notes", len(own)).format(count=len(own)))
+        group = Adw.PreferencesGroup(title=GLib.markup_escape_text(card.info.title), description=" · ".join(counts))
+        show_all = Gtk.Button(label=_("Show All"), valign=Gtk.Align.CENTER, css_classes=["flat"])
+        show_all.update_property([Gtk.AccessibleProperty.LABEL], [
+            _("Show all passages in “{title}”").format(title=card.info.title)])
+        show_all.connect("clicked", lambda _b: self.open_found(card, {"query": query}))
+        group.set_header_suffix(show_all)
+        group.set_hexpand(True)
+        box = Gtk.Box(spacing=18)
+        box.append(self._found_cover(card, query))
+        box.append(group)
+        box.group, box.book, box.rows, box.show_all = group, card.book.path, [], show_all
+        # The reader's own words first: there are few of them, and they were written for finding again.
+        for found in own:
+            note = found["kind"] == "note"
+            row = Adw.ActionRow(
+                title=parts_markup(found["parts"]), subtitle=_("Note") if note else _("Your Answer"), activatable=True)
+            if note and found.get("color"):
+                install_note_tints()
+                row.add_css_class(f"note-tint-{found['color']}")
+            goal = ({"query": query, "cfi": found["cfi"], "entry": found["entry"]} if note
+                    else {"query": query, "field": found["field"]})
+            row.connect("activated", lambda _r, goal=goal: self.open_found(card, goal))
+            row.kind = found["kind"]
+            group.add(row)
+            box.rows.append(row)
+        for passage in (item.passages if item else []):
+            row = Adw.ActionRow(title=parts_markup(passage["parts"]), activatable=True)
+            row.kind = "text"
+            goal = {"query": query, "section": passage["section"], "path": passage["path"]}
+            row.connect("activated", lambda _r, goal=goal: self.open_found(card, goal))
+            group.add(row)
+            box.rows.append(row)
+        return box
+
+    def open_found(self, card: BookCard, goal: dict):
+        """Opens a book at a place the search found, with the search in the book ready to go on."""
+        if not card.info.readable:
+            self.toast(_("This file could not be opened as a book."))
+            return
+        self.on_open(card.book, card.info, goal)
 
     def _action_sort(self, action, value):
         action.set_state(value)

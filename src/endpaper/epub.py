@@ -113,6 +113,41 @@ def read_info(path: Path) -> EpubInfo:
         raise EpubError(str(error)) from error
 
 
+MAX_SPINE_ITEMS = 10_000
+
+
+def read_spine(path: Path):
+    """The documents of the reading order, as bytes, one at a time: (place in the spine, data or None).
+    None stands for a document that is missing or too large, so that the places stay those of the reader."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = set(archive.namelist())
+            container = _parse_xml(_read_limited(archive, "META-INF/container.xml", MAX_XML_BYTES))
+            rootfile = container.find(f".//{{{_CONTAINER}}}rootfile")
+            if rootfile is None or not rootfile.get("full-path"):
+                raise EpubError("No package document")
+            opf_path = rootfile.get("full-path")
+            package = _parse_xml(_read_limited(archive, opf_path, MAX_XML_BYTES))
+            base = posixpath.dirname(opf_path)
+            hrefs = {
+                item.get("id"): posixpath.normpath(posixpath.join(base, unquote(item.get("href") or "")))
+                for item in package.findall(f"{{{_OPF}}}manifest/{{{_OPF}}}item")
+            }
+            # Like the reader, which leaves out what the manifest does not know.
+            known = [ref for ref in package.findall(f"{{{_OPF}}}spine/{{{_OPF}}}itemref") if ref.get("idref") in hrefs]
+            for place, itemref in enumerate(known[:MAX_SPINE_ITEMS]):
+                name = hrefs[itemref.get("idref")]
+                data = None
+                if name in names:
+                    try:
+                        data = _read_limited(archive, name, MAX_XML_BYTES)
+                    except EpubError:
+                        data = None
+                yield place, data
+    except (zipfile.BadZipFile, OSError, UnicodeError, ValueError, RuntimeError, NotImplementedError) as error:
+        raise EpubError(str(error)) from error
+
+
 def read_cover(path: Path, cover_path: str) -> bytes:
     try:
         with zipfile.ZipFile(path) as archive:

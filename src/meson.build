@@ -8,6 +8,8 @@ install_data(
     'endpaper/config.py',
     'endpaper/epub.py',
     'endpaper/fileio.py',
+    'endpaper/book_index.py',
+    'endpaper/indexer.py',
     'endpaper/library.py',
     'endpaper/main.py',
     'endpaper/markdown_style.py',

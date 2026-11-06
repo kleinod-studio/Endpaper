@@ -26,6 +26,9 @@ const LEFT_OUT = new Set(['script', 'style', 'template', 'nav', 'img', 'svg', 'a
 const types = element => (element.getAttributeNS(EPUB, 'type') ?? element.getAttribute('epub:type') ?? '').split(/\s+/)
 const isNoteLink = a => types(a).includes('noteref') || a.getAttribute('role') === 'doc-noteref'
 const hasText = node => node.textContent.trim() !== ''
+// The mark of a footnote, like "*" or "12", means nothing in a preview. A longer link marked as a note, as books
+// from jw.org mark their Bible references, is part of the sentence: its words stay, as plain text.
+const isNoteMark = a => isNoteLink(a) && a.textContent.trim().length <= MAX_SHORT_LINK
 const findTarget = (doc, id) => doc.getElementById(id) ?? doc.querySelector(`[name="${CSS.escape(id)}"]`)
 
 // A note is left out of the running text when a book says so, or when it and its mark link to each other.
@@ -109,7 +112,7 @@ const buildFrom = (source, out, state) => {
         }
         if (node.nodeType !== Node.ELEMENT_NODE) continue
         const name = node.localName.toLowerCase()
-        if (LEFT_OUT.has(name) || isNoteLink(node) || node.hasAttribute(HIDDEN)) continue
+        if (LEFT_OUT.has(name) || isNoteMark(node) || node.hasAttribute(HIDDEN)) continue
         if (name === 'br') {
             out.append(document.createElement('br'))
         } else if (INLINE[name]) {

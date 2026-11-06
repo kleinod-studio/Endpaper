@@ -1000,6 +1000,7 @@ def scenario(app, window):
     check(js(reader, 'endpaper.isShown("target-para")') is True, "the text is")
     shown = hovered("note-mark")
     check(shown["visible"] and "text of the first footnote" in shown["text"], "hovering shows the footnote")
+    check("as in Two 1:2." in shown["text"], f"with the words of a reference marked as a note, as Bible references are ({shown['text']})")
     check("strong" in shown["tags"] and shown["inWindow"], "with its emphasis, within the window")
     mark_place = link("note-mark", "rect")
     check(shown["side"] in ("left", "right"), "beside the link")

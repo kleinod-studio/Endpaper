@@ -143,7 +143,7 @@ def make_notes_epub(path: Path):
         '<a href="excerpt.xhtml#pc2">second-excerpt</a>.</p>'
         f'{filler}<p id="target-para">A paragraph of its own, <em>worth</em> looking at.</p>'
         '<aside epub:type="footnote" id="aside1"><div epub:type="footnote" id="note1"><p><a href="#src1">*</a> '
-        'The <strong>text</strong> of the first footnote.</p></div></aside>'
+        'The <strong>text</strong> of the first footnote, as in <a epub:type="noteref" href="two.xhtml#verse2">Two 1:2</a>.</p></div></aside>'
         '<p id="plain2"><a href="#src2">[2]</a> A plain footnote without any markup for it.</p>'
         '<aside epub:type="footnote"><div id="bad"><p>Harmless words'
         '<img src="x" onerror="window.__pwned=1"/><script>window.__pwned=2</script>'

@@ -84,6 +84,18 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.5.0" date="2026-11-08">
+      <description>
+        <p>Page numbers, and Markdown in answer fields.</p>
+        <ul>
+          <li>The corner can show pages instead of percent: the screens of the e-book, or the page numbers of the print edition if the book has them</li>
+          <li>Markdown in answer fields, such as bold, italic and lists, is shown formatted once you leave the field</li>
+          <li>The keys 1 to 5 and U start marking right away while reading</li>
+          <li>Previews of footnotes and references stay above the bar below the text</li>
+          <li>The description of a picture shown large stands in full below it</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.1" date="2026-11-08">
       <description>
         <p>Pinned categories, and complete previews.</p>

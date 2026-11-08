@@ -5,8 +5,10 @@ Uses a temporary folder and its own configuration; none of your data or books ar
 
 import atexit
 import http.server
+import base64
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -123,7 +125,7 @@ def scenario(app, window):
     make_epub(romane / "b.epub", title="Bravo", author="Zed", identifier="urn:b")
     make_epub(romane / "a.epub", title="Alpha", author="Yann", identifier="urn:a")
     make_epub(romane / "c.epub", title="Charlie", author="Xena", identifier="urn:c", cover=False)
-    make_epub(studium / "d.epub", title="Delta", identifier="urn:d")
+    make_epub(studium / "d.epub", title="Delta", identifier="urn:d", print_pages=True)
     make_epub(LIB / "lose.epub", title="Lose", identifier="urn:lose")
     (romane / "kaputt.epub").write_bytes(b"not a book")
     check(wait_for(lambda: len(shelf.sections) == 3), "new folders and books appear without a restart")
@@ -368,6 +370,25 @@ def scenario(app, window):
     reader.settings["flow"] = "paginated"
     reader._apply_settings()
     check(wait_for(lambda: layout()["columns"] == 2), "and pages come back side by side")
+
+    print("Page numbers")
+    progress_text = lambda: reader.progress_label.get_label()
+    check(wait_for(lambda: progress_text().endswith("%")), f"at first the corner shows percent ({progress_text()})")
+    reader.progress_row.set_selected(1)
+    check(wait_for(lambda: re.fullmatch(r"Page \d+ of \d+", progress_text())), f"or the pages of the e-book ({progress_text()})")
+    page_now = lambda: int(re.fullmatch(r"Page (\d+) of \d+", progress_text())[1])
+    first_page = page_now()
+    js(reader, "endpaper.next()")
+    check(wait_for(lambda: page_now() != first_page), "turning the page counts on")
+    check(page_now() == first_page + 1, f"by one ({first_page} to {page_now()})")
+    spin(0.5)  # a turn that is still sliding takes no second one
+    js(reader, "endpaper.prev()")
+    check(wait_for(lambda: page_now() == first_page, 5), f"and back by one ({page_now()})")
+    reader.progress_row.set_selected(2)
+    check(wait_for(lambda: re.fullmatch(r"Page 10[1-3] of 103", progress_text())), f"or the pages of the print edition ({progress_text()})")
+    check(config.reader_settings()["progress"] == "print", "the choice is kept")
+    reader.progress_row.set_selected(0)
+    check(wait_for(lambda: progress_text().endswith("%")), "and back to percent")
 
     print("Reading position")
     js(reader, "endpaper.next()")
@@ -657,6 +678,17 @@ def scenario(app, window):
     reader.web.grab_focus()
     press = lambda key, mods=Gdk.ModifierType(0): reader._on_key(None, key, 0, mods)
     check(press(Gdk.KEY_Right) is False, "outside marking mode the keys stay with the book")
+    color_before = reader._mark_color
+    press(Gdk.KEY_2)
+    check(wait_for(lambda: state()["marking"]) and reader.mark_buttons["green"].get_active(), "a number starts marking in its color")
+    reader.stop_marking()
+    wait_for(lambda: not state()["marking"])
+    press(Gdk.KEY_u)
+    check(wait_for(lambda: state()["marking"]) and reader.underline_button.get_active(), "u starts marking, underlined")
+    reader.stop_marking()
+    wait_for(lambda: not state()["marking"])
+    reader._mark_color = color_before
+    reader.web.grab_focus()
     window.lookup_action("toggle-marking").activate(None)
     wait_for(lambda: state()["marking"])
     reader.web.grab_focus()
@@ -1037,6 +1069,7 @@ def scenario(app, window):
     shown = hovered("long-link")
     check(len(shown["text"]) < 1600 and shown["text"].endswith("…"), "a long text is cut")
     check(shown["box"]["bottom"] - shown["box"]["top"] > 300 and shown["inWindow"], "and a lot of it takes the height it needs, within the window")
+    check(shown["below"] > 40, f"above the bar below the text ({shown['below']} px kept free)")
     shown = hovered("heading-link")
     check("Two" in shown["text"] and "after the heading" in shown["text"], "a heading brings its paragraph")
     js(reader, "endpaper.peekHide()")
@@ -1587,8 +1620,21 @@ def scenario(app, window):
         paintable.snapshot(snapshot, window.get_width(), window.get_height())
         node = snapshot.to_node()
         window.get_renderer().render_texture(node, None).save_to_png(os.environ["ENDPAPER_SHOT"])
+    png = "data:image/png;base64," + base64.b64encode(picture.get_paintable().save_to_png_bytes().get_data()).decode()
     dialog.close()
     check(wait_for(lambda: not dialog.get_mapped()), "it closes")
+    reader.picture_dialog = None
+    long_description = "A long description of the picture, as study editions have them. " * 6
+    reader._show_picture(png, long_description.strip())
+    check(opened_picture(), "a picture with a long description opens")
+    caption = reader.picture_caption
+    check(caption.get_visible() and caption.get_label() == long_description.strip(), "the whole description stands below the picture")
+    lines = lambda: caption.get_layout().get_line_count()
+    check(wait_for(lambda: caption.get_mapped() and caption.get_width() > 450 and 1 < lines() < 8),
+          f"on a few full lines ({lines()} lines, {caption.get_width()} px wide)")
+    check(reader.picture_dialog.get_height() <= window.get_height(), "and the dialog still fits the window")
+    reader.picture_dialog.close()
+    spin(0.5)
     reader.picture_dialog = None
     check(clicked["tabbable"], "a picture can be reached with the Tab key")
     check(js(reader, "endpaper.pictureClick(0, true)")["taken"] and opened_picture(), "and opened with Enter")

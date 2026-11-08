@@ -13,6 +13,7 @@ FONTS = ("book", "serif", "sans-serif")
 SPACINGS = ("compact", "normal", "relaxed")
 WIDTHS = ("narrow", "normal", "wide")
 FLOWS = ("paginated", "scrolled")
+PROGRESS = ("percent", "pages", "print")  # what the corner shows: percent, pages of the e-book, of the print edition
 FONT_SIZE_RANGE = (70, 220)
 
 READER_DEFAULTS = {
@@ -23,10 +24,11 @@ READER_DEFAULTS = {
     "hyphenate": True,
     "theme": "auto",
     "flow": "paginated",
+    "progress": "percent",
     "notes_only": False,
     "notes_wide": False,
 }
-_CHOICES = {"font": FONTS, "spacing": SPACINGS, "width": WIDTHS, "theme": THEMES, "flow": FLOWS}
+_CHOICES = {"font": FONTS, "spacing": SPACINGS, "width": WIDTHS, "theme": THEMES, "flow": FLOWS, "progress": PROGRESS}
 
 
 def config_path() -> Path:

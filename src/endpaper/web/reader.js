@@ -116,6 +116,7 @@ const columnCount = () => {
 const applyLayout = () => {
     const theme = THEMES[settings.theme]
     document.documentElement.style.background = theme.bg
+    document.documentElement.style.setProperty('--endpaper-below', `${settings.below ?? 0}px`)
     document.body.style.background = theme.bg
     if (!view?.renderer) return
     const r = view.renderer
@@ -127,6 +128,43 @@ const applyLayout = () => {
     r.setAttribute('max-inline-size', `${textWidth()}px`) // lays out the pages anew
     r.setStyles?.(css())
     for (const { doc } of r.getContents?.() ?? []) if (doc) adaptColors(doc)
+}
+
+// Pages of the e-book: the screens of the present layout, one more with every turn. Only the chapters seen so far
+// are counted exactly; the others are estimated by their size, from what the counted ones took.
+let pageCounts = new Map() // chapter -> screens it takes
+let pageLayout = ''
+
+const screenPages = detail => {
+    const r = view?.renderer
+    const index = detail.section?.current
+    if (!r || !Number.isInteger(index) || !(r.size > 0)) return null
+    const layout = [window.innerWidth, window.innerHeight, focus, JSON.stringify(settings)].join('|')
+    if (layout !== pageLayout) {
+        pageCounts = new Map()
+        pageLayout = layout
+    }
+    let pages, page
+    if (r.scrolled) {
+        pages = Math.max(1, Math.ceil(r.viewSize / r.size - 0.01))
+        page = Math.min(pages, Math.floor(r.start / r.size + 0.01) + 1)
+    } else {
+        pages = Math.max(1, r.pages - 2) // foliate-js keeps an empty page before and after a chapter
+        page = Math.min(pages, Math.max(1, r.page))
+    }
+    pageCounts.set(index, pages)
+    const sizes = view.book.sections.map(s => s.linear !== 'no' && s.size > 0 ? s.size : 0)
+    let countedPages = 0, countedSize = 0
+    for (const [i, n] of pageCounts) if (sizes[i]) { countedPages += n; countedSize += sizes[i] }
+    const perByte = countedSize ? countedPages / countedSize : 0
+    const pagesOf = i => pageCounts.get(i) ?? (sizes[i] ? Math.max(1, Math.round(sizes[i] * perByte)) : 0)
+    let before = 0, total = 0
+    sizes.forEach((_size, i) => {
+        const n = i === index ? pages : pagesOf(i)
+        if (i < index) before += n
+        total += n
+    })
+    return { current: before + page, total: Math.max(total, before + page) }
 }
 
 let adaptMs = 0
@@ -212,6 +250,10 @@ window.endpaper = {
                 fraction: Number.isFinite(detail.fraction) ? detail.fraction : 0,
                 tocLabel: detail.tocItem?.label?.trim() ?? '',
                 tocHref: detail.tocItem?.href ?? '',
+                page: screenPages(detail),
+                // Pages of the print edition, if the book lists them.
+                printPage: detail.pageItem?.label?.trim() || null,
+                printTotal: view.book.pageList?.at(-1)?.label?.trim() || null,
                 canGoBack: view.history.canGoBack,
             }))
             view.addEventListener('load', ({ detail: { doc, index } }) => {

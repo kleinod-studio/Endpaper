@@ -7,6 +7,8 @@ export const HIDDEN = 'data-endpaper-note' // reader.js hides what carries this
 const SHOW_DELAY = 250
 const HIDE_DELAY = 300
 const GAP = 8
+// The bar below the text and the progress card lie over the page: popups end above them.
+const below = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--endpaper-below')) || 0
 const SIDE_GAP = 14
 const MIN_SIDE_WIDTH = 240
 const ARROWS = 52 // room for the page buttons at the window's sides, which lie above the web view
@@ -238,7 +240,7 @@ export const createPeek = (view, { theme, isMarking, label }) => {
         if (room < MIN_SIDE_WIDTH) { // a narrow window: above or below it is
             const { offsetWidth: width, offsetHeight: height } = box
             const above = top - height - GAP
-            box.style.top = `${above >= GAP ? above : Math.min(top + rect.height + GAP, window.innerHeight - height - GAP)}px`
+            box.style.top = `${above >= GAP ? above : Math.min(top + rect.height + GAP, window.innerHeight - below() - height - GAP)}px`
             box.style.left = `${Math.max(GAP, Math.min(left + rect.width / 2 - width / 2, window.innerWidth - width - GAP))}px`
             return true
         }
@@ -246,7 +248,7 @@ export const createPeek = (view, { theme, isMarking, label }) => {
         const { offsetWidth: width, offsetHeight: height } = box
         box.style.left = `${side === 'right' ? left + rect.width + SIDE_GAP : left - SIDE_GAP - width}px`
         const middle = top + rect.height / 2 - height / 2
-        box.style.top = `${Math.max(GAP, Math.min(middle, window.innerHeight - height - GAP))}px`
+        box.style.top = `${Math.max(GAP, Math.min(middle, window.innerHeight - below() - height - GAP))}px`
         return true
     }
 
@@ -406,8 +408,9 @@ export const createPeek = (view, { theme, isMarking, label }) => {
                 text: body.textContent,
                 tags: [...body.querySelectorAll('*')].map(element => element.localName),
                 go: !go.hidden,
+                below: below(),
                 inWindow: !box.hidden && box.getBoundingClientRect().top >= 0
-                    && box.getBoundingClientRect().bottom <= window.innerHeight,
+                    && box.getBoundingClientRect().bottom <= window.innerHeight - below(),
             }
         },
         clickGo: () => go.click(),

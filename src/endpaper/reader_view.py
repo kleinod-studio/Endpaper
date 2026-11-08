@@ -181,6 +181,8 @@ class ReaderPage(Adw.NavigationPage):
         self.narrow = False
         self._progress_wanted = False
         self._fraction: float | None = None
+        self._pages: dict | None = None  # pages of the e-book, from the web view
+        self._print_page: tuple = (None, None)  # page of the print edition and its last page, if the book has them
         self._opening = 0  # counts the books opened, so that what the page says belongs to the book it is about
         self._goal: dict | None = None  # where the library search leads in the book being opened
         self._near: dict | None = None  # the passage whose result the next search should go to
@@ -482,23 +484,25 @@ class ReaderPage(Adw.NavigationPage):
                 self._js("endpaper.peekState()?.visible ?? false", leave)
                 return True
             return False
-        if not self.marking or self._in_field or (focus is not None and focus is not self.web):
+        if self._in_field or (focus is not None and focus is not self.web):
+            return False
+        plain = not state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SHIFT_MASK)
+        # A color or underlining starts marking too, as clicking the button below the text does.
+        if plain and keyval == Gdk.KEY_u:
+            self.underline_button.set_active(not self.underline_button.get_active())
+            return True
+        number = next((keyval - first for first in (Gdk.KEY_1, Gdk.KEY_KP_1) if 0 <= keyval - first < len(MARK_COLORS)), None)
+        if plain and number is not None:
+            self.mark_buttons[list(MARK_COLORS)[number]].set_active(True)
+            return True
+        if not self.marking:
             return False
         if keyval == Gdk.KEY_F10 and state & Gdk.ModifierType.SHIFT_MASK:
             self._js('endpaper.markKey("menu")')
             return True
-        if state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK | Gdk.ModifierType.SHIFT_MASK):
-            return False
-        name = MARK_KEYS.get(keyval)
+        name = MARK_KEYS.get(keyval) if plain else None
         if name:
             self._js(f"endpaper.markKey({json.dumps(name)})")
-            return True
-        if keyval == Gdk.KEY_u:
-            self.underline_button.set_active(not self.underline_button.get_active())
-            return True
-        number = keyval - Gdk.KEY_1
-        if 0 <= number < len(MARK_COLORS):
-            self.mark_buttons[list(MARK_COLORS)[number]].set_active(True)
             return True
         return False
 
@@ -918,12 +922,24 @@ class ReaderPage(Adw.NavigationPage):
         if self.finished:
             self.progress_label.set_label(_("Finished"))
         else:
-            self.progress_label.set_label(_("{percent}%").format(percent=round(fraction * 100)))
+            self.progress_label.set_label(self._progress_text(fraction))
         self.progress_badge.update_property(
             [Gtk.AccessibleProperty.LABEL], [f"{_('Reading Progress')}: {self.progress_label.get_label()}"])
         self.progress_ring.show_progress(1.0 if self.finished else fraction, animate)
         self._progress_wanted = True
         self._update_bottom()
+
+    def _progress_text(self, fraction: float) -> str:
+        """Percent, or pages: the print edition's only where the book has them, the e-book's otherwise."""
+        shown = self.settings.get("progress", "percent")
+        page, last = self._print_page
+        if shown == "print" and page:
+            if last and last != page:
+                return _("Page {page} of {total}").format(page=page, total=last)
+            return _("Page {page}").format(page=page)
+        if shown in ("pages", "print") and self._pages:
+            return _("Page {page} of {total}").format(page=self._pages["current"], total=self._pages["total"])
+        return _("{percent}%").format(percent=round(fraction * 100))
 
     # --- Focus mode ---------------------------------------------------------------------------
 
@@ -1016,6 +1032,10 @@ class ReaderPage(Adw.NavigationPage):
         hyphen.connect("notify::active", hyphen_changed)
         group.add(hyphen)
         group.add(self._combo(_("Layout"), [("paginated", _("Pages")), ("scrolled", _("Continuous Scrolling"))], "flow"))
+        self.progress_row = self._combo(_("Progress"), [
+            ("percent", _("Percent")), ("pages", _("Pages of the E-Book")), ("print", _("Pages of the Print Edition")),
+        ], "progress")
+        group.add(self.progress_row)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         box.set_size_request(320, -1)
         box.append(self._build_themes())
@@ -1082,6 +1102,9 @@ class ReaderPage(Adw.NavigationPage):
         if resolved["theme"] == "auto":
             resolved["theme"] = "dark" if Adw.StyleManager.get_default().get_dark() else "light"
         resolved["labels"] = {"goTo": _("Go to This Place")}
+        # Popups over the text end above the bar below it.
+        bars = [getattr(self, name, None) for name in ("mark_bar", "progress_badge")]
+        resolved["below"] = BAR_BOTTOM + max((bar.measure(Gtk.Orientation.VERTICAL, -1)[1] for bar in bars if bar), default=0)
         return resolved
 
     def _apply_settings(self, save=True):
@@ -1092,6 +1115,7 @@ class ReaderPage(Adw.NavigationPage):
         self.web.set_background_color(color)
         if self.opened:
             self._js(f"endpaper.applySettings({json.dumps(resolved)})")
+            self._show_progress(self._fraction)
         if save:
             config.update(reader=self.settings)
 
@@ -1202,16 +1226,29 @@ class ReaderPage(Adw.NavigationPage):
             alternative_text=description or None,
         )
         content = Adw.ToolbarView(content=picture)
-        content.add_top_bar(Adw.HeaderBar())
+        content.add_top_bar(Adw.HeaderBar(show_title=False))
+        # The description can be long: below the picture it wraps instead of being cut off in the title.
+        caption = Gtk.Label(
+            label=description, wrap=True, xalign=0, selectable=True, visible=bool(description),
+            margin_start=18, margin_end=18, margin_top=12, margin_bottom=18,
+        )
+        content.add_bottom_bar(caption)
+        self.picture_caption = caption
         dialog = Adw.Dialog(title=description or _("Picture"), child=content)
         # As large as fits, also for a small picture: that is what it was opened for.
         root = self.get_root()
         header = 47
         room_width = root.get_width() * self.PICTURE_SHARE
-        room_height = root.get_height() * self.PICTURE_SHARE - header
-        scale = min(room_width / texture.get_width(), room_height / texture.get_height())
-        dialog.set_content_width(max(360, round(texture.get_width() * scale)))
-        dialog.set_content_height(max(240, round(texture.get_height() * scale) + header))
+        width = room_width
+        below = 0
+        for _round in range(2):  # the caption takes more lines when the picture, and so the dialog, is narrower
+            below = caption.measure(Gtk.Orientation.VERTICAL, max(1, round(width) - 36))[1] + 30 if description else 0
+            room_height = root.get_height() * self.PICTURE_SHARE - header - below
+            scale = min(room_width / texture.get_width(), max(1, room_height) / texture.get_height())
+            # A description needs room for whole lines, also beside a narrow picture.
+            width = min(room_width, max(560 if description else 360, texture.get_width() * scale))
+        dialog.set_content_width(round(width))
+        dialog.set_content_height(max(240, round(texture.get_height() * scale) + header + below))
         dialog.present(self)
         self.picture_dialog = dialog
 
@@ -1362,6 +1399,8 @@ class ReaderPage(Adw.NavigationPage):
             self.state.set_position(self.book_key, message["cfi"], message["fraction"], time.time())
             if not self._save_timer:
                 self._save_timer = GLib.timeout_add(SAVE_DELAY_MS, self._save_state)
+        self._pages = message.get("page")
+        self._print_page = (message.get("printPage"), message.get("printTotal"))
         self._show_progress(message["fraction"])
         self.window_title.set_subtitle(message.get("tocLabel") or "")
         self.back_button.set_visible(bool(message.get("canGoBack")))

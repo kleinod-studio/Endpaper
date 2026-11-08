@@ -32,9 +32,10 @@ def chapter(title: str, paragraphs: int) -> str:
 
 
 def make_epub(path: Path, title="Test Book", author="A. Author", identifier="urn:test:1", cover=True, chapters=3, paragraphs=40,
-              language="en", extra=""):
-    """extra: one more paragraph at the end of the first chapter."""
-    items, spine, toc = [], [], []
+              language="en", extra="", print_pages=False):
+    """extra: one more paragraph at the end of the first chapter. print_pages: a page list of a print
+    edition, page 101 at the start of the first chapter, 102 at the second and so on."""
+    items, spine, toc, pages = [], [], [], []
     with zipfile.ZipFile(path, "w") as z:
         z.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
         z.writestr(
@@ -46,6 +47,9 @@ def make_epub(path: Path, title="Test Book", author="A. Author", identifier="urn
             text = chapter(f"Chapter {n}", paragraphs)
             if extra and n == 1:
                 text = text.replace("</body>", f"<p>{extra}</p></body>")
+            if print_pages:
+                text = text.replace("</h1>", f'</h1><span id="page{100 + n}"></span>', 1)
+                pages.append(f'<li><a href="ch{n}.xhtml#page{100 + n}">{100 + n}</a></li>')
             z.writestr(f"OEBPS/ch{n}.xhtml", text)
             items.append(f'<item id="c{n}" href="ch{n}.xhtml" media-type="application/xhtml+xml"/>')
             spine.append(f'<itemref idref="c{n}"/>')
@@ -53,7 +57,9 @@ def make_epub(path: Path, title="Test Book", author="A. Author", identifier="urn
         z.writestr(
             "OEBPS/nav.xhtml",
             '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'
-            f'<body><nav epub:type="toc"><ol>{"".join(toc)}</ol></nav></body></html>',
+            f'<body><nav epub:type="toc"><ol>{"".join(toc)}</ol></nav>'
+            + (f'<nav epub:type="page-list"><ol>{"".join(pages)}</ol></nav>' if pages else "")
+            + "</body></html>",
         )
         items.append('<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>')
         if cover:

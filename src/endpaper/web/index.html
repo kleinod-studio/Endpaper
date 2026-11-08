@@ -36,7 +36,7 @@
     .endpaper-peek { animation: none; }
   }
   .endpaper-peek[hidden], .endpaper-peek button[hidden] { display: none; }
-  .endpaper-peek .body { max-height: min(72vh, 36rem); overflow-y: auto; padding: .8em 1em; overflow-wrap: anywhere; }
+  .endpaper-peek .body { max-height: min(72vh, 36rem, calc(100vh - var(--endpaper-below, 0px) - 80px)); overflow-y: auto; padding: .8em 1em; overflow-wrap: anywhere; }
   .endpaper-peek p { margin: 0 0 .5em; }
   .endpaper-peek p:last-child { margin-bottom: 0; }
   .endpaper-peek p.heading { font-weight: bold; }

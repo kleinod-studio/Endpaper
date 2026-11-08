@@ -84,6 +84,15 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.4.1" date="2026-11-08">
+      <description>
+        <p>Pinned categories, and complete previews.</p>
+        <ul>
+          <li>Pin a category to the top of the shelf from its menu</li>
+          <li>Previews keep the words of longer references, such as Bible references, instead of leaving only the brackets</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-11-06">
       <description>
         <p>Finished books, and marking made smoother.</p>

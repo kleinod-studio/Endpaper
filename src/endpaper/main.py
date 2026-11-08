@@ -14,7 +14,7 @@ from gi.repository import Adw, Gdk, Gio, Gtk
 from .window import EndpaperWindow
 
 APP_ID = "studio.kleinod.Endpaper"
-VERSION = "0.4.0"  # must match meson.build
+VERSION = "0.4.1"  # must match meson.build
 GETTEXT_DOMAIN = "endpaper"
 WEBSITE = "https://kleinod.studio/endpaper"
 REPOSITORY = "https://github.com/kleinod-studio/Endpaper"

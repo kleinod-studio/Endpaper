@@ -14,7 +14,7 @@ Endpaper is a hobby project without commercial intent. It grows in phases, and e
 ## Phase 1: Shelf and reading ✅
 
 - [x] Library folder; subfolders are categories
-- [x] Shelf with covers, categories that fold, and pinned books that stay visible
+- [x] Shelf with covers, categories that fold, and pinned books that stay visible; categories can be pinned to the top
 - [x] Create, rename and delete categories; add, move, rename and delete books; notes move along
 - [x] Changes in the folder from outside appear on the shelf
 - [x] Reading with mouse, scroll wheel and keyboard; pages (two side by side in a wide window) or continuous scrolling

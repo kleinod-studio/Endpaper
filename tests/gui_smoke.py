@@ -446,6 +446,22 @@ def scenario(app, window):
     shelf.toggle_finished(delta)
     wait_for(lambda: not delta.finished)
 
+    print("Categories pinned to the top")
+    first_section = lambda: shelf.sections_box.get_first_child()
+    check(first_section() is not shelf.sections[studium], "Studium comes after Romane at first")
+    menu = shelf.category_menu(shelf.sections[studium].category)
+    check(menu.get_item_attribute_value(1, "label").get_string() == "Pin to Top", "the menu of a category pins it to the top")
+    shelf.activate_action("shelf.toggle-on-top", GLib.Variant("s", str(studium)))
+    check(wait_for(lambda: first_section() is shelf.sections[studium]), "a pinned category goes to the top")
+    check(library.read_on_top(studium) and library.read_finished(studium) == [], "the pin is kept in its folder, beside the rest")
+    check(shelf.sections[studium].pin_icon.get_visible(), "a pin beside its name shows it")
+    check(not shelf.sections[romane].pin_icon.get_visible(), "the others show none")
+    menu = shelf.category_menu(shelf.sections[studium].category)
+    check(menu.get_item_attribute_value(1, "label").get_string() == "Unpin from Top", "the menu can take it back")
+    shelf.activate_action("shelf.toggle-on-top", GLib.Variant("s", str(studium)))
+    check(wait_for(lambda: first_section() is not shelf.sections[studium]), "unpinned, it goes back to its place")
+    check(not library.read_on_top(studium) and not shelf.sections[studium].pin_icon.get_visible(), "and the pin is gone")
+
     print("Bad positions and files")
     state.books[delta.info.key]["cfi"] = "epubcfi(/6/999!/4/2)"
     shelf.open_card(delta)

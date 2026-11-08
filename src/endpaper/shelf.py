@@ -213,6 +213,9 @@ class CategorySection(Gtk.Box):
         inner.append(self.chevron)
         inner.append(self.heading)
         inner.append(self.count)
+        self.pin_icon = Gtk.Image(icon_name="view-pin-symbolic", tooltip_text=_("Pinned to Top"), visible=False)
+        self.pin_icon.add_css_class("dim-label")
+        inner.append(self.pin_icon)
         self.toggle = Gtk.Button(child=inner, hexpand=True, halign=Gtk.Align.START)
         self.toggle.add_css_class("flat")
         self.toggle.connect("clicked", lambda _b: self.set_collapsed(not self.collapsed))
@@ -286,6 +289,7 @@ class CategorySection(Gtk.Box):
             card.update_display()
         count = len(category.books)
         self.count.set_label(str(count))
+        self.pin_icon.set_visible(category.on_top and not self.smart)
         self.empty_hint.set_visible(count == 0 and not self.smart)
         self.menu_button.set_menu_model(self.shelf.category_menu(category))
         self._update_toggle()
@@ -296,7 +300,10 @@ class CategorySection(Gtk.Box):
         count = len(self.category.books)
         name = self.name
         books = ngettext("{count} book", "{count} books", count).format(count=count)
-        self.toggle.update_property([Gtk.AccessibleProperty.LABEL], [f"{name}, {books}"])
+        label = f"{name}, {books}"
+        if self.category.on_top and not self.smart:
+            label += ", " + _("Pinned to Top")
+        self.toggle.update_property([Gtk.AccessibleProperty.LABEL], [label])
         self.toggle.update_state([Gtk.AccessibleState.EXPANDED], [0 if self.collapsed else 1])
         self.toggle.set_tooltip_text(_("Unfold") if self.collapsed else _("Fold"))
 
@@ -473,6 +480,7 @@ class ShelfPage(Adw.NavigationPage):
             ("choose-library", self._action_choose_library, None),
             ("add-to-category", self._action_add_to_category, "s"),
             ("rename-category", self._action_rename_category, "s"),
+            ("toggle-on-top", self._action_toggle_on_top, "s"),
             ("trash-category", self._action_trash_category, "s"),
             ("open", lambda _a, p: self._with_card(p, self.open_card), "s"),
             ("toggle-pin", lambda _a, p: self._with_card(p, self.toggle_pin), "s"),
@@ -833,6 +841,7 @@ class ShelfPage(Adw.NavigationPage):
             menu.append_item(item)
         add(_("Add Books…"), "shelf.add-to-category")
         if category.name is not None:
+            add(_("Unpin from Top") if category.on_top else _("Pin to Top"), "shelf.toggle-on-top")
             add(_("Rename…"), "shelf.rename-category")
             add(_("Move to Trash"), "shelf.trash-category")
         return menu
@@ -986,6 +995,11 @@ class ShelfPage(Adw.NavigationPage):
                 self.state.collapsed.add(name.strip())
                 self.save_state()
         self._ask_name(_("Rename Category"), path.name, _("Rename"), rename)
+
+    def _action_toggle_on_top(self, _action, parameter):
+        path = Path(parameter.get_string())
+        if category := next((c for c in self.categories if c.path == path), None):
+            self._attempt(lambda: library.set_on_top(path, not category.on_top))
 
     def _action_trash_category(self, _action, parameter):
         path = Path(parameter.get_string())

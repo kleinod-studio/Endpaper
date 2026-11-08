@@ -52,6 +52,7 @@ class Category:
     pinned: list[str] = field(default_factory=list)  # file keys, see Book.file_key
     reference: list[str] = field(default_factory=list)  # books to look things up in, not to read through
     finished: list[str] = field(default_factory=list)  # books the reader has marked as read
+    on_top: bool = False  # pinned to the top of the shelf
 
     def is_pinned(self, book: Book) -> bool:
         return book.file_key in self.pinned
@@ -119,7 +120,7 @@ def _read_list(folder: Path, name: str) -> list[str]:
     return [item for item in items if isinstance(item, str)] if isinstance(items, list) else []
 
 
-def _write_list(folder: Path, name: str, items: list[str]) -> None:
+def _write_list(folder: Path, name: str, items: list | bool) -> None:
     """Keeps everything else in the file as it is."""
     file = folder / SHELF_FILE
     try:
@@ -151,24 +152,38 @@ def read_finished(folder: Path) -> list[str]:
     return _read_list(folder, "finished")
 
 
+def read_on_top(folder: Path) -> bool:
+    try:
+        data = json.loads((folder / SHELF_FILE).read_text(encoding="utf-8"))
+        return data.get("on_top") is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def set_on_top(category: Path, on_top: bool) -> None:
+    """Saved in the category's own folder, so it stays with a renamed or synced category."""
+    _write_list(category, "on_top", on_top)
+
+
 def scan(root: Path) -> list[Category]:
-    """Categories in name order; the books without a category come first, if there are any."""
-    result = []
+    """Categories in name order, those pinned to the top first; then the books without a category,
+    if there are any, and the other categories."""
     loose = _collect_books(root, root, root, False)
-    if loose:
-        result.append(Category(root, None, loose, read_pins(root), read_reference(root), read_finished(root)))
+    rest = [Category(root, None, loose, read_pins(root), read_reference(root), read_finished(root))] if loose else []
     folders = []
     try:
         for entry in os.scandir(root):
             if not _is_hidden(entry.name) and entry.is_dir() and _is_inside(Path(entry.path), root):
                 folders.append(Path(entry.path))
     except OSError:
-        return result
+        return rest
+    on_top = []
     for folder in sorted(folders, key=lambda p: p.name.casefold()):
-        result.append(Category(
+        category = Category(
             folder, folder.name, _collect_books(folder, folder, root, True), read_pins(folder), read_reference(folder),
-            read_finished(folder)))
-    return result
+            read_finished(folder), read_on_top(folder))
+        (on_top if category.on_top else rest).append(category)
+    return on_top + rest
 
 
 def _check_name(name: str) -> str:

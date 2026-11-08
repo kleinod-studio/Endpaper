@@ -175,6 +175,27 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual(library.read_finished(self.root / "B"), [])
         self.assertEqual(library.read_reference(self.root / "B"), ["y.epub"], "being a reference work stays")
 
+    def test_categories_pinned_to_the_top_come_first(self):
+        self.book("loose.epub")
+        for name in ("A", "B", "C"):
+            (self.root / name).mkdir()
+        library.set_on_top(self.root / "C", True)
+        library.set_on_top(self.root / "B", True)
+        self.assertEqual([c.name for c in library.scan(self.root)], ["B", "C", None, "A"])
+        self.assertTrue(library.scan(self.root)[0].on_top)
+        renamed = library.rename_category(self.root / "B", "Z")
+        self.assertEqual([c.name for c in library.scan(self.root)], ["C", "Z", None, "A"], "the pin stays when renamed")
+        library.set_on_top(renamed, False)
+        self.assertEqual([c.name for c in library.scan(self.root)], ["C", None, "A", "Z"])
+
+    def test_pin_to_the_top_keeps_the_book_lists(self):
+        book = self.book("A/x.epub", "A")
+        library.set_pinned(book, True)
+        library.set_on_top(self.root / "A", True)
+        self.assertEqual(library.read_pins(self.root / "A"), ["x.epub"])
+        (self.root / "A" / library.SHELF_FILE).write_text('{"on_top": "yes"}')
+        self.assertFalse(library.read_on_top(self.root / "A"), "only a real true counts")
+
     def test_pins_survive_broken_or_foreign_files(self):
         folder = self.root / "A"
         folder.mkdir()

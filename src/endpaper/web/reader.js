@@ -397,6 +397,19 @@ window.endpaper = {
             windowHeight: window.innerHeight,
             height: element.offsetHeight,
             scroll: element.scrollHeight,
+            formatted: (() => {
+                const overlay = element.endpaperFormatted
+                if (!overlay) return null
+                const a = overlay.getBoundingClientRect(), b = element.getBoundingClientRect()
+                return {
+                    text: overlay.textContent,
+                    bold: [...overlay.querySelectorAll('span')].filter(s => s.style.fontWeight === 'bold').map(s => s.textContent),
+                    italic: [...overlay.querySelectorAll('span')].filter(s => s.style.fontStyle === 'italic').map(s => s.textContent),
+                    inside: a.left >= b.left && a.right <= b.right + 1 && a.top >= b.top && a.bottom <= b.bottom + 1,
+                    hiddenLetters: element.style.getPropertyValue('-webkit-text-fill-color') === 'transparent',
+                    inBody: element.ownerDocument.body.contains(overlay),
+                }
+            })(),
         }
     },
     // A key pressed in a field or, without selector, in the text. True if the app took it for itself.

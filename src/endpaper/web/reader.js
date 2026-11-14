@@ -230,7 +230,7 @@ window.addEventListener('resize', () => {
 })
 
 window.endpaper = {
-    async open(url, name, nextSettings, position, nextOpening) {
+    async open(url, name, nextSettings, position, nextOpening, check = null) {
         opening = nextOpening
         settings = nextSettings
         applyLayout()
@@ -258,6 +258,9 @@ window.endpaper = {
                 printPage: detail.pageItem?.label?.trim() || null,
                 printTotal: view.book.pageList?.at(-1)?.label?.trim() || null,
                 canGoBack: view.history.canGoBack,
+                // To find the place again in a new edition of the book.
+                file: view.book.sections[detail.section?.current]?.id ?? null,
+                words: tidy(detail.range?.toString() ?? '').slice(0, 80),
             }))
             view.addEventListener('load', ({ detail: { doc, index } }) => {
                 doc.addEventListener('securitypolicyviolation', onViolation)
@@ -277,6 +280,14 @@ window.endpaper = {
             document.body.append(view)
             await view.open(new File([blob], name, { type: 'application/epub+zip' }))
             applyLayout()
+            // A new edition of the book: the place of reading is found again by its chapter and its words.
+            if (position && check) {
+                try {
+                    position = await places.position(position, check)
+                } catch (error) {
+                    console.warn('Place of reading not checked', error)
+                }
+            }
             try {
                 await view.init({ lastLocation: position, showTextStart: true })
             } catch {

@@ -98,7 +98,16 @@ export const createPlaces = view => {
     }
 
     return {
-        // items: [{ kind: 'mark' | 'bookmark', id, cfi, file, quote }]
+        // The place of reading in a new edition; its chapter's start if its words are gone.
+        async position(cfi, { file, quote }) {
+            const [result] = await this.check([{ kind: 'position', id: 'position', cfi, file, quote }])
+            if (!result) return cfi
+            if (!result.lost) return result.cfi
+            const index = file ? view.book.sections.findIndex(section => section.id === file) : -1
+            return index >= 0 ? view.getCFI(index) : cfi
+        },
+
+        // items: [{ kind: 'mark' | 'bookmark' | 'position', id, cfi, file, quote }]
         async check(items) {
             const { sections } = view.book
             const documents = new Map()
@@ -120,6 +129,7 @@ export const createPlaces = view => {
 
         async checkOne(item, sections, documentOf) {
             const bookmark = item.kind === 'bookmark'
+            const position = item.kind === 'position' // the place of reading: its first words are kept
             let cfi = item.cfi
             let index = null
             try {
@@ -138,6 +148,7 @@ export const createPlaces = view => {
             const fits = range => {
                 if (!range || !wanted) return Boolean(range)
                 const text = bookmark ? bookmarkText(range) : tidy(quoteOf(range))
+                if (position) return text.startsWith(wanted)
                 if (!bookmark) return text === wanted
                 return wanted.length >= MAX_QUOTE ? text.startsWith(wanted) : text === wanted || text.startsWith(wanted)
             }

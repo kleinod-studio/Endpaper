@@ -647,7 +647,10 @@ class ReaderPage(Adw.NavigationPage):
                  for e in self.notes.entries]
         items += [{"kind": "bookmark", "id": b.id, "cfi": b.cfi, "file": b.extra.get("file"), "quote": b.quote}
                   for b in self.notes.bookmarks]
-        if not items:
+        if not items:  # still, the next opening has to know whether the book changed, for the place of reading
+            if self._edition():
+                self.state.put(self.book_key, "edition", self._edition())
+                self.state.save()
             return
         lost = set(self.state.get(self.book_key, "lost", []) or [])
         full = self.state.get(self.book_key, "edition") != self._edition()
@@ -1345,12 +1348,19 @@ class ReaderPage(Adw.NavigationPage):
             return  # left over from the book before, such as a late change of place
         if kind == "ready":
             if self.book_path:
+                position = self.state.position(self.book_key)
+                edition = self.state.get(self.book_key, "edition")
+                check = None
+                if position and edition and edition != self._edition():
+                    check = {"file": self.state.get(self.book_key, "position_file"),
+                             "quote": self.state.get(self.book_key, "position_words")}
                 arguments = [
                     f"endpaper://app/{BOOK_PATH}",
                     self.book_path.name,
                     self._resolved_settings(),
-                    self.state.position(self.book_key),
+                    position,
                     self._opening,
+                    check if check and (check["file"] or check["quote"]) else None,
                 ]
                 self._js(f"endpaper.open(...{json.dumps(arguments)})")
         elif kind == "opened":
@@ -1461,6 +1471,8 @@ class ReaderPage(Adw.NavigationPage):
     def _on_relocate(self, message):
         if self.book_key and message.get("cfi"):
             self.state.set_position(self.book_key, message["cfi"], message["fraction"], time.time())
+            self.state.put(self.book_key, "position_file", message.get("file"))
+            self.state.put(self.book_key, "position_words", message.get("words"))
             if not self._save_timer:
                 self._save_timer = GLib.timeout_add(SAVE_DELAY_MS, self._save_state)
         self._pages = message.get("page")

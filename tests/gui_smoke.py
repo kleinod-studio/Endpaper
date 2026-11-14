@@ -1304,6 +1304,12 @@ def scenario(app, window):
     check(files[sea_mark.id].endswith("exodus.xhtml") and files[gone_mark.id] == files[sea_mark.id]
           and edition_notes().bookmarks[0].extra["file"].endswith("genesis.xhtml"), f"the right files ({files})")
     check(edition_notes()._entry(sea_mark.id).cfi == sea["cfi"], "without moving anything that fits")
+    visible = lambda: (js(reader, "endpaper.diagnostics()") or {}).get("visibleText") or ""
+    reader._go_to_mark(sea["cfi"])
+    chapter_now = lambda: reader.window_title.get_subtitle()
+    check(wait_for(lambda: chapter_now() == "Exodus" and "Exodus" in visible(), 5), "reading on in Exodus")
+    check(wait_for(lambda: (reader.state.get(reader.book_key, "position_file") or "").endswith("exodus.xhtml"), 5),
+          "the place of reading keeps its chapter's file")
     window.navigation.pop()
     wait_for(lambda: not reader.opened)
     time.sleep(0.05)  # a newer file, also on file systems that count time coarsely
@@ -1316,6 +1322,8 @@ def scenario(app, window):
     make_edition_epub(edition_path, second_edition)
     messages.clear()
     open_edition()
+    check(wait_for(lambda: chapter_now() == "Exodus" and "Exodus" in visible(), 5),
+          f"in a new edition with a chapter before it, the book opens where reading stopped ({chapter_now()})")
     check(wait_for(lambda: edition_notes()._entry(sea_mark.id).cfi != sea["cfi"], 10), "in a new edition, a mark is placed anew")
     moved = edition_notes()._entry(sea_mark.id)
     check(js_async(reader, json.dumps(moved.cfi).join(["endpaper.quoteAt(", ")"]))["quote"] == sea["quote"], "on its own words, in a chapter that moved and changed")

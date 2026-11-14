@@ -84,6 +84,16 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.5.1" date="2026-11-14">
+      <description>
+        <p>Marks that survive a new edition of a book.</p>
+        <ul>
+          <li>When a book is replaced by a new edition, marks, notes, answers, bookmarks and the reading position are found again by their text</li>
+          <li>Marks that can no longer be found are reported and stay safe in the notes file</li>
+          <li>Marks follow the lines of text instead of filling a rectangle, also with a ragged right edge</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-11-08">
       <description>
         <p>Page numbers, and Markdown in answer fields.</p>

@@ -2,7 +2,8 @@
 // Books are not trusted: the Content Security Policy set by reader_view.py keeps their scripts from running.
 import './foliate-js/view.js'
 import { adapt, audit } from './contrast.js'
-import { createMarks, textRects } from './marks.js'
+import { createMarks, quoteOf, textRects } from './marks.js'
+import { blockIn, bookmarkText, createPlaces, findText, firstWordOf, tidy } from './places.js'
 import { createBookmarks } from './bookmarks.js'
 import { createPeek } from './peek.js'
 import { createFields } from './fields.js'
@@ -55,6 +56,7 @@ let fields = null
 let bookmarks = null
 let pictures = null
 let search = null
+let places = null
 let settings = null
 const blocked = []
 
@@ -237,6 +239,7 @@ window.endpaper = {
             view = document.createElement('foliate-view')
             marks = createMarks(view, post)
             fields = createFields(view, post)
+            places = createPlaces(view)
             bookmarks = createBookmarks(view, post)
             pictures = createPictures(view, post, { isBusy: () => marks.marking || bookmarks.placing })
             search = createSearch(view, post, { marks: () => marks.list })
@@ -415,6 +418,22 @@ window.endpaper = {
     sections: () => view.book.sections.map(s => ({ linear: s.linear, size: s.size })),
     setAnswers: answers => fields?.setAnswers(answers),
     setBookmarks: list => bookmarks?.setAll(list),
+    // full: the book file changed, every place is looked at. Otherwise only places that do not know their
+    // chapter's file yet, and those whose chapter stands elsewhere now; no chapter has to be read for the rest.
+    async checkPlaces(items, full) {
+        const asked = opening
+        const { sections } = view.book
+        const due = items.filter(item => {
+            if (full || !item.file) return true
+            try {
+                return sections[view.resolveCFI(item.cfi).index]?.id !== item.file
+            } catch {
+                return true
+            }
+        })
+        const results = due.length ? await places.check(due) : []
+        post('places', { results, full, opening: asked }) // a book opened meanwhile drops it
+    },
     bookmarkHere: () => bookmarks?.here(),
     setBookmarkPlacing: on => bookmarks?.setPlacing(on),
     bookmarkState: () => bookmarks?.state,
@@ -426,6 +445,22 @@ window.endpaper = {
         element.dispatchEvent(new Event(element.type === 'checkbox' ? 'change' : 'input', { bubbles: true }))
     },
     // A short heading taken whole into a range: the mark is painted as wide as its words, not as the column.
+    // For the tests: the place of some words, as a mark or as a bookmark on their paragraph, and the words at a place.
+    async placeOf(text, bookmark = false) {
+        for (const [index, section] of view.book.sections.entries()) {
+            const doc = await section.createDocument()
+            const found = findText(doc, tidy(text))
+            if (!found) continue
+            const place = bookmark ? firstWordOf(blockIn(found.startContainer)) : found
+            return { cfi: view.getCFI(index, place), quote: bookmark ? bookmarkText(place) : quoteOf(place), index }
+        }
+        return null
+    },
+    async quoteAt(cfi, bookmark = false) {
+        const { index, anchor } = view.resolveCFI(cfi)
+        const range = anchor(await view.book.sections[index].createDocument())
+        return { index, quote: bookmark ? bookmarkText(range) : quoteOf(range) }
+    },
     markRectsCheck() {
         const { doc } = view.renderer.getContents()[0]
         const heading = doc.querySelector('h1')

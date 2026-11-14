@@ -627,6 +627,67 @@ class ReaderPage(Adw.NavigationPage):
             pass
         self._bookmarks_changed()
 
+    # --- Places in a new edition -----------------------------------------------------------
+
+    def _edition(self) -> str | None:
+        """Tells one edition of the book file from the next: a book updated under the same name."""
+        try:
+            stat = self.book_path.stat()
+        except (OSError, AttributeError):
+            return None
+        return f"{stat.st_size}:{stat.st_mtime_ns}"
+
+    def _check_places(self):
+        """Marks and bookmarks keep the file of their chapter and their words, to be found again when the book is
+        replaced by a newer edition. A changed edition has every place looked at; otherwise only those that do
+        not know their file yet, and those whose chapter moved."""
+        if not self.notes or not self.book_key:
+            return
+        items = [{"kind": "mark", "id": e.id, "cfi": e.cfi, "file": e.extra.get("file"), "quote": e.quote}
+                 for e in self.notes.entries]
+        items += [{"kind": "bookmark", "id": b.id, "cfi": b.cfi, "file": b.extra.get("file"), "quote": b.quote}
+                  for b in self.notes.bookmarks]
+        if not items:
+            return
+        lost = set(self.state.get(self.book_key, "lost", []) or [])
+        full = self.state.get(self.book_key, "edition") != self._edition()
+        if not full:
+            items = [item for item in items if item["id"] not in lost]
+        self._checking_edition = self._edition()
+        self._js(f"endpaper.checkPlaces({json.dumps(items)}, {json.dumps(full)})")
+
+    def _on_places(self, message):
+        if not self.notes or not self.book_key:
+            return
+        moved, lost = False, []
+        for result in message.get("results", []):
+            if result.get("lost"):
+                lost.append(result["id"])
+                continue
+            try:
+                self.notes.place(result["kind"], result["id"], result["cfi"], result.get("file"))
+            except NotesError:
+                self._save_failed()
+                return  # nothing counts as checked: the next opening tries again
+            moved = True
+        if moved:
+            self._send_marks()
+            self._bookmarks_changed()
+            self._notes_changed()
+        known = set(self.state.get(self.book_key, "lost", []) or [])
+        if message.get("full"):
+            known = set()
+        new = [i for i in lost if i not in known]
+        self.state.put(self.book_key, "lost", sorted(known | set(lost)))
+        if self._checking_edition:
+            self.state.put(self.book_key, "edition", self._checking_edition)
+        self.state.save()
+        if new:
+            self.show_message(ngettext(
+                "One mark or bookmark was not found in this edition of the book. It stays in the notes file.",
+                "{count} marks or bookmarks were not found in this edition of the book. They stay in the notes file.",
+                len(new)).format(count=len(new)))
+
     def _bookmarks_changed(self):
         self._fill_bookmarks()
         if self.notes:
@@ -1299,12 +1360,15 @@ class ReaderPage(Adw.NavigationPage):
             self._send_marks()
             self._send_answers()
             self._bookmarks_changed()
+            self._check_places()
             self._update_marking()
             self._reach_goal()
             if self.on_opened:
                 self.on_opened()
         elif kind == "relocate":
             self._on_relocate(message)
+        elif kind == "places":
+            self._on_places(message)
         elif kind == "mark-pending":
             self._mark_pending = message["active"]
             self.mark_hint.set_label(

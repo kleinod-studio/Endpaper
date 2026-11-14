@@ -39,7 +39,7 @@ from endpaper import config, library  # noqa: E402
 from endpaper.main import EndpaperApplication  # noqa: E402
 from endpaper import shelf as shelf_module  # noqa: E402
 from endpaper.notes import MARK_COLORS, NotesFile, NotesKept
-from make_epub import make_epub, make_figures_epub, make_hostile_epub, make_answers_epub, make_notes_epub, make_styled_epub  # noqa: E402
+from make_epub import make_edition_epub, make_epub, make_figures_epub, make_hostile_epub, make_answers_epub, make_notes_epub, make_styled_epub  # noqa: E402
 
 failures = []
 passed = 0
@@ -96,6 +96,16 @@ def js(reader, script):
     reader._js(script, lambda value: box.update(done=True, value=value))
     wait_for(lambda: box.get("done"), 15)
     return box.get("value")
+
+
+def js_async(reader, script):
+    """A script that answers with a promise: its value once it has come."""
+    js(reader, f"window.__done = undefined; Promise.resolve({script}).then(v => window.__done = {{v}}, e => window.__done = {{e: String(e)}}); 0")
+    wait_for(lambda: js(reader, "window.__done !== undefined"), 15)
+    done = js(reader, "window.__done") or {}
+    if "e" in done or "v" not in done:
+        print(f"  (script {script!r}: {done})")
+    return done.get("v")
 
 
 def remove_note(row):
@@ -1257,6 +1267,74 @@ def scenario(app, window):
     check(window.navigation.get_navigation_stack().get_n_items() == 2, "a double click opens the book only once")
     check(wait_for(lambda: (js(reader, "endpaper.diagnostics()") or {}).get("cfi")), "a saved place that does not fit opens the start")
     wait_for(lambda: (js(reader, "endpaper.diagnostics()") or {}).get("cfi"))
+
+    print("Places in a new edition of a book")
+    window.navigation.pop()
+    wait_for(lambda: window.navigation.get_visible_page() is shelf)
+    filler = ["Plain words to fill the page, said once more for the sake of length. " * 3 for _ in range(4)]
+    first_edition = [
+        ("intro.xhtml", "Intro", filler),
+        ("genesis.xhtml", "Genesis", [*filler, "In the beginning the words of the bookmark stand here.", "A garden with a river in it."]),
+        ("exodus.xhtml", "Exodus", [*filler, "The sea parted, and the people walked through on dry ground.", "Words that will be gone."]),
+    ]
+    edition_path = make_edition_epub(LIB / "edition.epub", first_edition)
+    check(wait_for(lambda: edition_path in shelf.sections[LIB].cards), "a book in its first edition")
+    def open_edition():
+        shelf.open_card(shelf.sections[LIB].cards[edition_path])
+        check(wait_for(lambda: reader.opened), "opens")
+        wait_for(lambda: (js(reader, "endpaper.diagnostics()") or {}).get("cfi"))
+    def edition_notes():
+        return NotesFile(edition_path, "Handbook")
+    open_edition()
+    sea = js_async(reader, json.dumps("people walked through").join(["endpaper.placeOf(", ")"]))
+    gone = js_async(reader, json.dumps("will be gone").join(["endpaper.placeOf(", ")"]))
+    ribbon = js_async(reader, json.dumps("words of the bookmark").join(["endpaper.placeOf(", ", true)"]))
+    check(sea and gone and ribbon, "places in it are found")
+    if not (sea and gone and ribbon):
+        raise SystemExit("the places test needs its places")
+    sea_mark = reader.notes.add(sea["cfi"], sea["quote"], chapter="Exodus", color="green")
+    gone_mark = reader.notes.add(gone["cfi"], gone["quote"], chapter="Exodus")
+    bookmark = reader.notes.add_bookmark(ribbon["cfi"], ribbon["quote"], chapter="Genesis")
+    window.navigation.pop()
+    wait_for(lambda: not reader.opened)
+    open_edition()
+    check(wait_for(lambda: all(e.extra.get("file") for e in edition_notes().entries) and all(b.extra.get("file") for b in edition_notes().bookmarks), 10),
+          "opening the book again notes the file of each place's chapter")
+    files = {e.id: e.extra["file"] for e in edition_notes().entries}
+    check(files[sea_mark.id].endswith("exodus.xhtml") and files[gone_mark.id] == files[sea_mark.id]
+          and edition_notes().bookmarks[0].extra["file"].endswith("genesis.xhtml"), f"the right files ({files})")
+    check(edition_notes()._entry(sea_mark.id).cfi == sea["cfi"], "without moving anything that fits")
+    window.navigation.pop()
+    wait_for(lambda: not reader.opened)
+    time.sleep(0.05)  # a newer file, also on file systems that count time coarsely
+    second_edition = [
+        ("intro.xhtml", "Intro", filler),
+        ("preface.xhtml", "A New Preface", filler),
+        ("genesis.xhtml", "Genesis", [*filler, "In the beginning the words of the bookmark stand here.", "A garden with a river in it."]),
+        ("exodus.xhtml", "Exodus", [*filler, "A paragraph new in this edition.", "The sea parted, and the people walked through on dry ground."]),
+    ]
+    make_edition_epub(edition_path, second_edition)
+    messages.clear()
+    open_edition()
+    check(wait_for(lambda: edition_notes()._entry(sea_mark.id).cfi != sea["cfi"], 10), "in a new edition, a mark is placed anew")
+    moved = edition_notes()._entry(sea_mark.id)
+    check(js_async(reader, json.dumps(moved.cfi).join(["endpaper.quoteAt(", ")"]))["quote"] == sea["quote"], "on its own words, in a chapter that moved and changed")
+    check(moved.extra["file"] == files[sea_mark.id] and moved.color == "green", "keeping its file and its color")
+    placed = edition_notes().bookmarks[0]
+    check(placed.cfi != ribbon["cfi"] and js_async(reader, json.dumps(placed.cfi).join(["endpaper.quoteAt(", ", true)"]))["quote"].startswith("In the beginning"),
+          "a bookmark too, on its paragraph")
+    check(any("not found in this edition" in m for m in messages), f"a mark whose words are gone is said ({messages[-1:] })")
+    check(edition_notes()._entry(gone_mark.id).quote == gone["quote"], "and stays in the notes file")
+    messages.clear()
+    window.navigation.pop()
+    wait_for(lambda: not reader.opened)
+    open_edition()
+    spin(1)
+    check(not any("not found" in m for m in messages), "it is said only once")
+    window.navigation.pop()
+    wait_for(lambda: not reader.opened)
+    edition_path.unlink()
+    edition_path.with_name("edition.notes.md").unlink()
 
     print("Answer fields")
     window.navigation.pop()

@@ -123,4 +123,14 @@ class State:
         return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
     def set_position(self, key: str, cfi: str, fraction: float, now: float) -> None:
-        self.books[key] = {"cfi": cfi, "fraction": fraction, "read": now}
+        entry = self.books.get(key)
+        self.books[key] = {**(entry if isinstance(entry, dict) else {}), "cfi": cfi, "fraction": fraction, "read": now}
+
+    def get(self, key: str, name: str, default=None):
+        """Another value kept for a book, such as which edition its places were checked against."""
+        entry = self.books.get(key)
+        return entry.get(name, default) if isinstance(entry, dict) else default
+
+    def put(self, key: str, name: str, value) -> None:
+        entry = self.books.get(key)
+        self.books[key] = {**(entry if isinstance(entry, dict) else {}), name: value}

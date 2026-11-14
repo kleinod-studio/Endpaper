@@ -13,14 +13,14 @@ const EDGE = 2
 const REACH = 4
 const MAX_QUOTE = 160
 
-const blockOf = node => {
+export const blockOf = node => {
     let block = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
     const window = block.ownerDocument.defaultView
     while (block.parentElement && window.getComputedStyle(block).display === 'inline') block = block.parentElement
     return block
 }
 
-const firstWordIn = block => {
+export const firstWordIn = block => {
     const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT)
     while (walker.nextNode()) {
         const words = shown(walker.currentNode) ? wordsOf(walker.currentNode) : []

@@ -76,6 +76,43 @@ def make_epub(path: Path, title="Test Book", author="A. Author", identifier="urn
     return path
 
 
+def make_edition_epub(path: Path, chapters: list[tuple[str, str, list[str]]], identifier="urn:edition"):
+    """A book in a given edition: chapters as (file, title, paragraphs), in reading order, with no ids on
+    the spine, as many books have it. A later edition may add chapters or change words."""
+    items, spine, toc = [], [], []
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+        z.writestr(
+            "META-INF/container.xml",
+            '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+            '<rootfiles><rootfile full-path="OEBPS/p.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
+        )
+        for n, (file, title, paragraphs) in enumerate(chapters):
+            body = "".join(f"<p>{text}</p>" for text in paragraphs)
+            z.writestr(
+                f"OEBPS/{file}",
+                '<?xml version="1.0" encoding="utf-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">'
+                f"<head><title>{title}</title></head><body><h1>{title}</h1>{body}</body></html>",
+            )
+            items.append(f'<item id="c{n}" href="{file}" media-type="application/xhtml+xml"/>')
+            spine.append(f'<itemref idref="c{n}"/>')
+            toc.append(f'<li><a href="{file}">{title}</a></li>')
+        z.writestr(
+            "OEBPS/nav.xhtml",
+            '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'
+            f'<body><nav epub:type="toc"><ol>{"".join(toc)}</ol></nav></body></html>',
+        )
+        items.append('<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>')
+        z.writestr(
+            "OEBPS/p.opf",
+            '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="i">'
+            f'<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="i">{identifier}</dc:identifier>'
+            "<dc:title>Handbook</dc:title><dc:language>en</dc:language></metadata>"
+            f'<manifest>{"".join(items)}</manifest><spine>{"".join(spine)}</spine></package>',
+        )
+    return path
+
+
 def make_styled_epub(path: Path):
     """A book that insists on its own colors with !important, as many study editions do."""
     css = """

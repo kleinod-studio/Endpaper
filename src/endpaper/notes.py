@@ -452,6 +452,17 @@ def _apply_remove_bookmark(blocks: list, bookmark_id: str) -> None:
             blocks.remove(bookmark)
 
 
+def _apply_place(blocks: list, kind: str, item_id: str, cfi: str, file: str | None) -> None:
+    """A place found again in a new edition of the book. Gone elsewhere meanwhile: nothing to do."""
+    items = _entries(blocks) if kind == "mark" else _bookmarks(blocks)
+    item = next((i for i in items if i.id == item_id), None)
+    if item is None:
+        return
+    item.cfi = cfi
+    if file:
+        item.extra["file"] = file
+
+
 def _apply_add(blocks: list, entry: Entry) -> None:
     taken = {e.id for e in _entries(blocks)}
     _insert(blocks, replace(entry, id=_new_id(taken)) if entry.id in taken else entry)
@@ -846,6 +857,13 @@ class NotesFile:
     def _drop_bookmark(self, bookmark_id: str) -> None:
         self._bookmark(bookmark_id)  # gone elsewhere meanwhile: undo goes on with the step before
         self._change(_apply_remove_bookmark, bookmark_id)
+
+    def place(self, kind: str, item_id: str, cfi: str, file: str | None = None) -> None:
+        """Where a mark ("mark") or bookmark ("bookmark") stands in this edition of the book, and the file of
+        its chapter, so that it is found again in the next one. Not a change of the reader's: nothing to undo."""
+        if kind not in ("mark", "bookmark"):
+            raise ValueError(kind)
+        self._change(_apply_place, kind, item_id, cfi, file)
 
     def refresh(self) -> bool:
         """Takes over what other programs changed. True if anything did."""

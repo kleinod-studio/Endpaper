@@ -674,6 +674,39 @@ class NotesFileTest(unittest.TestCase):
         self.assertEqual(conflict.read_text(encoding="utf-8"), "mine")
 
 
+class PlacesTest(unittest.TestCase):
+    """A new edition of a book: places found again are written down, without anything to undo."""
+
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.book = Path(self.folder.name) / "book.epub"
+        self.book.write_bytes(b"not touched")
+
+    def test_a_place_and_its_file_are_kept(self):
+        notes = NotesFile(self.book, "Book")
+        entry = notes.add("epubcfi(/6/4!/4/2,/1:0,/1:5)", "Words", "A note", "One", color="green")
+        bookmark = notes.add_bookmark("epubcfi(/6/6!/4/2,/1:0,/1:3)", "The paragraph")
+        notes.place("mark", entry.id, "epubcfi(/6/8!/4/6,/1:0,/1:5)", "one.xhtml")
+        notes.place("bookmark", bookmark.id, "epubcfi(/6/10!/4/2,/1:0,/1:3)", "two.xhtml")
+        again = NotesFile(self.book, "Book")
+        moved = again._entry(entry.id)
+        self.assertEqual((moved.cfi, moved.extra["file"], moved.color, moved.notes[0].text),
+                         ("epubcfi(/6/8!/4/6,/1:0,/1:5)", "one.xhtml", "green", "A note"))
+        self.assertEqual((again.bookmarks[0].cfi, again.bookmarks[0].extra["file"]), ("epubcfi(/6/10!/4/2,/1:0,/1:3)", "two.xhtml"))
+        self.assertIn("file=one.xhtml", self.book.with_name("book.notes.md").read_text(encoding="utf-8"))
+        notes.undo()  # takes back the bookmark, the last change of the reader's, not a place
+        self.assertEqual(NotesFile(self.book, "Book")._entry(entry.id).cfi, "epubcfi(/6/8!/4/6,/1:0,/1:5)")
+
+    def test_a_place_gone_elsewhere_is_left_alone(self):
+        notes = NotesFile(self.book, "Book")
+        notes.add("epubcfi(/6/4!/4/2,/1:0,/1:5)", "Words")
+        notes.place("mark", "nothere", "epubcfi(/6/8!/4/6)", "one.xhtml")
+        self.assertEqual([e.cfi for e in NotesFile(self.book, "Book").entries], ["epubcfi(/6/4!/4/2,/1:0,/1:5)"])
+        with self.assertRaises(ValueError):
+            notes.place("answer", "x", "epubcfi(/6/4)")
+
+
 class AnswersTest(unittest.TestCase):
     KEY = "one.xhtml#q1"
 

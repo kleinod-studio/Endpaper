@@ -82,6 +82,44 @@ const neighbor = (word, forward) => {
 
 export const firstRect = range => range.getClientRects()[0]
 
+// Only the lines of text are painted. A block that lies wholly inside a mark would otherwise add its whole box,
+// as wide as the column, also where its lines end early, as in poetry or ragged text.
+export const textRects = range => {
+    const doc = range.startContainer.ownerDocument ?? range.startContainer
+    const root = range.commonAncestorContainer
+    const pieces = []
+    const add = (node, start, end) => {
+        const part = doc.createRange()
+        part.setStart(node, start)
+        part.setEnd(node, end)
+        for (const rect of part.getClientRects()) if (rect.width > 0.5 && rect.height > 0.5) pieces.push(rect)
+    }
+    if (root.nodeType === Node.TEXT_NODE) add(root, range.startOffset, range.endOffset)
+    else {
+        const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            if (!range.intersectsNode(node)) continue
+            const start = node === range.startContainer ? range.startOffset : 0
+            const end = node === range.endContainer ? range.endOffset : node.length
+            if (end > start) add(node, start, end)
+        }
+    }
+    // Pieces side by side on one line become one, so that a line reads as one stroke.
+    const lines = []
+    for (const rect of pieces) {
+        const line = lines.find(other => Math.min(other.bottom, rect.bottom) - Math.max(other.top, rect.top)
+            > Math.min(other.bottom - other.top, rect.height) / 2
+            && rect.left <= other.right + 1 && rect.right >= other.left - 1)
+        if (line) {
+            line.left = Math.min(line.left, rect.left)
+            line.right = Math.max(line.right, rect.right)
+            line.top = Math.min(line.top, rect.top)
+            line.bottom = Math.max(line.bottom, rect.bottom)
+        } else lines.push({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })
+    }
+    return lines.map(line => ({ ...line, width: line.right - line.left, height: line.bottom - line.top }))
+}
+
 export const onScreen = range => {
     const rect = firstRect(range)
     const frame = range.startContainer.ownerDocument.defaultView.frameElement?.getBoundingClientRect()
@@ -196,7 +234,7 @@ export const createMarks = (view, post) => {
             if (cursor && cursor.startContainer.ownerDocument === pending.doc && overlayer) {
                 const order = pending.word.compareBoundaryPoints(Range.START_TO_START, cursor)
                 const range = order <= 0 ? span(pending.word, cursor) : span(cursor, pending.word)
-                overlayer.add(PREVIEW, range, Overlayer.highlight, { color: hex })
+                overlayer.add(PREVIEW, range, (_rects, options) => Overlayer.highlight(textRects(range), options), { color: hex })
             }
         }
         for (const { overlayer } of view.renderer.getContents()) overlayer?.remove(CURSOR)
@@ -368,7 +406,8 @@ export const createMarks = (view, post) => {
         const mark = marks.get(annotation.value)
         if (!mark) return
         const base = mark.style === 'underline' ? Overlayer.underline : Overlayer.highlight
-        paint((rects, options) => {
+        paint((_blockRects, options) => {
+            const rects = textRects(range)
             const group = svgElement('g', {})
             group.append(base(rects, options))
             signs.delete(mark.cfi)

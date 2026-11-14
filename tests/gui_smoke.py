@@ -671,6 +671,11 @@ def scenario(app, window):
     reader.mark_done.emit("clicked")
     wait_for(lambda: not state()["marking"])
 
+    print("Marks follow the lines")
+    shape = js(reader, "endpaper.markRectsCheck()")
+    check(shape["block"] > shape["words"] * 1.5, f"a heading taken whole has a box as wide as the column ({shape})")
+    check(abs(shape["painted"] - shape["words"]) < 4 and shape["lines"] == 2, "but the mark is painted only behind its words")
+
     print("Marking with the keyboard")
     from gi.repository import Gdk
     js(reader, "endpaper.goToIndex(2)")

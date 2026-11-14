@@ -2,7 +2,7 @@
 // Books are not trusted: the Content Security Policy set by reader_view.py keeps their scripts from running.
 import './foliate-js/view.js'
 import { adapt, audit } from './contrast.js'
-import { createMarks } from './marks.js'
+import { createMarks, textRects } from './marks.js'
 import { createBookmarks } from './bookmarks.js'
 import { createPeek } from './peek.js'
 import { createFields } from './fields.js'
@@ -424,6 +424,19 @@ window.endpaper = {
         if (element.type === 'checkbox') element.checked = value
         else element.value = value
         element.dispatchEvent(new Event(element.type === 'checkbox' ? 'change' : 'input', { bubbles: true }))
+    },
+    // A short heading taken whole into a range: the mark is painted as wide as its words, not as the column.
+    markRectsCheck() {
+        const { doc } = view.renderer.getContents()[0]
+        const heading = doc.querySelector('h1')
+        const text = [...heading.nextElementSibling.childNodes].find(n => n.nodeType === 3) ?? heading.nextElementSibling.querySelector('a').firstChild
+        const range = doc.createRange()
+        range.setStartBefore(heading)
+        range.setEnd(text, Math.min(3, text.length))
+        const widest = rects => Math.max(...[...rects].map(r => r.width))
+        const words = doc.createRange()
+        words.selectNodeContents(heading)
+        return { block: widest(range.getClientRects()), painted: widest(textRects(range)), words: widest(words.getClientRects()), lines: textRects(range).length }
     },
     fieldState(selector) {
         const element = view.renderer.getContents()[0].doc.querySelector(selector)

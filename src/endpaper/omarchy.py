@@ -5,17 +5,15 @@ import re
 import tomllib
 from pathlib import Path
 
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk
-
 FOLDER = Path.home() / ".local" / "state" / "omarchy" / "current"
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")
 
 _colors: dict | None = None
 _loaded = False
-_monitor: Gio.FileMonitor | None = None
+_monitor = None  # Gio.FileMonitor
 _timeout = 0
 _callbacks: list = []
-_provider: Gtk.CssProvider | None = None
+_provider = None  # Gtk.CssProvider
 _window_on = False
 
 
@@ -105,6 +103,8 @@ def window_css(found: dict) -> str:
 
 def set_window(on: bool) -> None:
     """The whole window in the Omarchy colors, or back to the system's."""
+    from gi.repository import Adw, Gdk, Gtk
+
     global _provider, _window_on
     found = colors() if on else None
     display = Gdk.Display.get_default()
@@ -138,6 +138,8 @@ def reload() -> bool:
 
 def watch(on_change=None) -> None:
     """Follows the theme set in Omarchy, and calls on_change() after another one was set."""
+    from gi.repository import Gio, GLib
+
     global _monitor
     if on_change:
         _callbacks.append(on_change)

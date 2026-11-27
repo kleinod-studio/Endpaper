@@ -35,11 +35,27 @@ gi.require_version("Adw", "1")
 gi.require_version("Graphene", "1.0")
 from gi.repository import Adw, Gdk, GLib, Graphene, Gtk  # noqa: E402
 
-from endpaper import config, library  # noqa: E402
+from endpaper import config, library, omarchy  # noqa: E402
 from endpaper.main import EndpaperApplication  # noqa: E402
 from endpaper import shelf as shelf_module  # noqa: E402
 from endpaper.notes import MARK_COLORS, NotesFile, NotesKept
 from make_epub import make_edition_epub, make_epub, make_figures_epub, make_hostile_epub, make_answers_epub, make_notes_epub, make_styled_epub  # noqa: E402
+
+# An Omarchy theme of our own, so that the test doesn't depend on the one of this computer.
+OMARCHY = TMP / "omarchy"
+(OMARCHY / "theme").mkdir(parents=True)
+OMARCHY_COLORS = 'mode = "dark"\naccent = "#e07a5f"\nbackground = "#2b2a33"\nforeground = "#ebe6f0"\n'
+(OMARCHY / "theme" / "colors.toml").write_text(OMARCHY_COLORS)
+omarchy.FOLDER = OMARCHY
+
+
+def set_omarchy_theme(colors):
+    """As omarchy-theme-set does: the new theme is made beside the current one, then put in its place."""
+    following = OMARCHY / "next-theme"
+    following.mkdir()
+    (following / "colors.toml").write_text(colors)
+    shutil.rmtree(OMARCHY / "theme")
+    following.rename(OMARCHY / "theme")
 
 failures = []
 passed = 0
@@ -1579,12 +1595,27 @@ def scenario(app, window):
     check(not os.environ.get("ENDPAPER_CODE") and Gtk.IconTheme.get_for_display(window.get_display()).has_icon("studio.kleinod.Endpaper") or bool(os.environ.get("ENDPAPER_CODE")), "the logo is found for the About window")
     check(reader.menu_button.get_mapped() and reader.menu_button.get_primary(), "the main menu is there while reading")
     check(reader.settings_button.get_mapped() and reader.settings_button.is_ancestor(reader.overlay), "text and layout are in the bar below the text")
-    check(len(reader.theme_buttons) == 5 and len(reader.mark_buttons) == 5, "five themes and five colors")
+    check(len(reader.theme_buttons) == 6 and len(reader.mark_buttons) == 5, "five themes, Omarchy's, and five colors")
     reader.theme_buttons["sage"].set_active(True)
     check(wait_for(lambda: js(reader, "endpaper.bookDocument()")["background"] == "rgb(228, 236, 223)"), "a theme button reaches the book")
     check(config.reader_settings()["theme"] == "sage" and not reader.theme_follow.get_active(), "and is remembered")
     reader.theme_buttons["black"].set_active(True)
     check(wait_for(lambda: js(reader, "endpaper.bookDocument()")["background"] == "rgb(0, 0, 0)"), "black reaches the book")
+
+    print("The theme of Omarchy")
+    styles = Adw.StyleManager.get_default()
+    reader.theme_buttons["omarchy"].set_active(True)
+    check(wait_for(lambda: js(reader, "endpaper.bookDocument()")["background"] == "rgb(43, 42, 51)"), "the pages take the colors of the Omarchy theme")
+    check(config.reader_settings()["theme"] == "omarchy", "and it is remembered")
+    check(omarchy._provider is not None and styles.get_color_scheme() == Adw.ColorScheme.FORCE_DARK, "the whole window takes them too, dark as the theme")
+    check("--accent-bg-color: #e07a5f" in omarchy.window_css(omarchy.colors()), "with its accent")
+    set_omarchy_theme('mode = "light"\naccent = "#3a7d44"\nbackground = "#f4f1ea"\nforeground = "#30302e"\n')
+    check(wait_for(lambda: js(reader, "endpaper.bookDocument()")["background"] == "rgb(244, 241, 234)", 10), "another theme set in Omarchy reaches the book")
+    check(styles.get_color_scheme() == Adw.ColorScheme.FORCE_LIGHT, "and the window, light now")
+    set_omarchy_theme(OMARCHY_COLORS)
+    wait_for(lambda: js(reader, "endpaper.bookDocument()")["background"] == "rgb(43, 42, 51)", 10)
+    reader.theme_buttons["black"].set_active(True)
+    check(wait_for(lambda: omarchy._provider is None) and styles.get_color_scheme() == Adw.ColorScheme.DEFAULT, "another theme gives the window back to the system")
     reader.theme_follow.set_active(True)
     check(config.reader_settings()["theme"] == "auto", "following the system can be chosen")
     expected = "dark" if Adw.StyleManager.get_default().get_dark() else "light"

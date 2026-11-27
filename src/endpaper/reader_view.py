@@ -16,7 +16,7 @@ gi.require_version("Soup", "3.0")
 
 from gi.repository import Adw, Gdk, Gio, GLib, GObject, Gtk, Soup, WebKit
 
-from . import config
+from . import config, omarchy
 from .notes import DEFAULT_MARK_COLOR, MARK_COLORS, NotesError, NotesFile, NotesKept
 from .indexer import install_note_tints, parts_markup
 from .notes_panel import NotesPanel
@@ -66,7 +66,34 @@ def _mark_color_name(color: str) -> str:
 
 
 def _theme_name(theme: str) -> str:
-    return {"light": _("Light"), "sepia": _("Sepia"), "sage": _("Sage"), "dark": _("Dark"), "black": _("Black")}[theme]
+    return {"light": _("Light"), "sepia": _("Sepia"), "sage": _("Sage"), "dark": _("Dark"), "black": _("Black"),
+            "omarchy": "Omarchy"}[theme]
+
+
+def _theme_colors(theme: str) -> tuple[str, str]:
+    """Background and text of a theme; Omarchy's come from the current Omarchy theme."""
+    if theme == "omarchy":
+        found = omarchy.colors()
+        if found:
+            return found["background"], found["text"]
+    return THEME_COLORS.get(theme, THEME_COLORS["light"])
+
+
+_omarchy_button_css: Gtk.CssProvider | None = None
+
+
+def _install_omarchy_button_css() -> None:
+    """The button for the Omarchy theme in its current colors."""
+    global _omarchy_button_css
+    display = Gdk.Display.get_default()
+    if display is None:
+        return
+    if _omarchy_button_css is None:
+        _omarchy_button_css = Gtk.CssProvider()
+        Gtk.StyleContext.add_provider_for_display(display, _omarchy_button_css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    back, text = _theme_colors("omarchy")
+    _omarchy_button_css.load_from_string(
+        f"button.theme-omarchy, button.theme-omarchy:hover, button.theme-omarchy:checked {{ background: {back}; color: {text}; }}")
 
 
 def _install_css() -> None:
@@ -189,6 +216,7 @@ class ReaderPage(Adw.NavigationPage):
         self.picture_dialog = None
         self._build()
         Adw.StyleManager.get_default().connect("notify::dark", lambda *_a: self._apply_settings(save=False))
+        omarchy.watch(self._on_omarchy_changed)
 
     def _build(self):
         self.window_title = Adw.WindowTitle()
@@ -1112,7 +1140,8 @@ class ReaderPage(Adw.NavigationPage):
         row = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER, margin_top=6)
         self.theme_buttons, self._theme_guard = {}, False
         group = None
-        for name in THEME_COLORS:
+        # Omarchy's theme only where Omarchy is there.
+        for name in [*THEME_COLORS, *(["omarchy"] if omarchy.colors() else [])]:
             title = _theme_name(name)
             # Translators: shown on the buttons for the colors of the pages, as a sample of the text
             button = Gtk.ToggleButton(label=_("Aa"), tooltip_text=title, css_classes=["theme-choice", f"theme-{name}"], group=group)
@@ -1121,6 +1150,7 @@ class ReaderPage(Adw.NavigationPage):
             self.theme_buttons[name] = button
             row.append(button)
             group = group or button
+        _install_omarchy_button_css()
         self.theme_follow = Adw.SwitchRow(title=_("Follow the System"), subtitle=_("Light or dark, as the system is set"))
         self.theme_follow.connect("notify::active", self._on_theme_follow)
         list_box = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE, css_classes=["boxed-list"])
@@ -1134,7 +1164,9 @@ class ReaderPage(Adw.NavigationPage):
     def _show_theme(self):
         self._theme_guard = True
         self.theme_follow.set_active(self.settings["theme"] == "auto")
-        self.theme_buttons[self._resolved_settings()["theme"]].set_active(True)
+        button = self.theme_buttons.get(self._resolved_settings()["theme"])
+        if button:
+            button.set_active(True)
         self._theme_guard = False
 
     def _on_theme_button(self, button, name):
@@ -1146,6 +1178,11 @@ class ReaderPage(Adw.NavigationPage):
         if not self._theme_guard:
             self.settings["theme"] = "auto" if row.get_active() else self._resolved_settings()["theme"]
             self._apply_settings()
+
+    def _on_omarchy_changed(self):
+        """Another theme was set in Omarchy: its button and, where it is chosen, the pages take the new colors."""
+        _install_omarchy_button_css()
+        self._apply_settings(save=False)
 
     def _on_notes_only(self, only: bool):
         self.settings["notes_only"] = only
@@ -1163,6 +1200,12 @@ class ReaderPage(Adw.NavigationPage):
 
     def _resolved_settings(self) -> dict:
         resolved = dict(self.settings)
+        if resolved["theme"] == "omarchy":
+            found = omarchy.colors()
+            if found:
+                resolved["omarchyTheme"] = omarchy.page_theme(found)
+            else:
+                resolved["theme"] = "auto"  # Omarchy is gone: as the system is set
         if resolved["theme"] == "auto":
             resolved["theme"] = "dark" if Adw.StyleManager.get_default().get_dark() else "light"
         resolved["labels"] = {"goTo": _("Go to This Place")}
@@ -1174,8 +1217,9 @@ class ReaderPage(Adw.NavigationPage):
     def _apply_settings(self, save=True):
         self._show_theme()
         resolved = self._resolved_settings()
+        omarchy.set_window(resolved["theme"] == "omarchy")
         color = Gdk.RGBA()
-        color.parse(THEME_COLORS[resolved["theme"]][0])
+        color.parse(_theme_colors(resolved["theme"])[0])
         self.web.set_background_color(color)
         if self.opened:
             self._js(f"endpaper.applySettings({json.dumps(resolved)})")

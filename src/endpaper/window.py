@@ -2,7 +2,7 @@ from gettext import gettext as _
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
-from . import config, library
+from . import config, library, omarchy
 from .shelf import ShelfPage, error_text
 
 
@@ -18,6 +18,9 @@ class EndpaperWindow(Adw.ApplicationWindow):
         self.set_size_request(360, 294)
         self.state = config.State()
         self.reader = None  # created on first use: the web engine takes a moment to load
+        # The theme "Omarchy" colors the whole window, also the shelf before a book is open.
+        omarchy.set_window(config.reader_settings()["theme"] == "omarchy")
+        omarchy.watch()
 
         self.toasts = Adw.ToastOverlay()
         self.navigation = Adw.NavigationView()

@@ -8,7 +8,7 @@ from gi.repository import GLib
 from .fileio import atomic_write_text
 
 SORT_MODES = ("title", "author", "recent")
-THEMES = ("auto", "light", "sepia", "sage", "dark", "black")
+THEMES = ("auto", "light", "sepia", "sage", "dark", "black", "omarchy")
 FONTS = ("book", "serif", "sans-serif")
 SPACINGS = ("compact", "normal", "relaxed")
 WIDTHS = ("narrow", "normal", "wide")

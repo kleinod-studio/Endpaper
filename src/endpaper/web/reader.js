@@ -37,6 +37,11 @@ const THEMES = {
         bgRgb: 'rgb(0, 0, 0)', fgRgb: 'rgb(214, 214, 214)', surfaceRgb: 'rgb(32, 32, 32)',
     },
 }
+// The theme "Omarchy" takes the colors of the current Omarchy theme; the app sends them along.
+const useSettings = next => {
+    settings = next
+    if (next.omarchyTheme) THEMES.omarchy = next.omarchyTheme
+}
 const LINE_HEIGHT = { compact: 1.3, normal: 1.5, relaxed: 1.8 }
 const TEXT_WIDTH = { narrow: 520, normal: 640, wide: 800 }
 const MARGIN = 72 // above and below the text: room for the bar below it, which must never cover a line
@@ -249,7 +254,7 @@ const sizeObserver = new ResizeObserver(() => {
 window.endpaper = {
     async open(url, name, nextSettings, position, nextOpening, check = null) {
         opening = nextOpening
-        settings = nextSettings
+        useSettings(nextSettings)
         applyLayout()
         try {
             const blob = await (await fetch(url)).blob()
@@ -321,7 +326,7 @@ window.endpaper = {
         }
     },
     applySettings(nextSettings) {
-        settings = nextSettings
+        useSettings(nextSettings)
         applyLayout()
     },
     setFocus(on) {

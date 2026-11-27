@@ -53,6 +53,16 @@ flatpak install --user Endpaper-0.5.2-x86_64.flatpak
 
 Use the `-aarch64` bundle on ARM computers. The GNOME 51 runtime comes from Flathub, which has to be set up once (`flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo`).
 
+### Icon in Omarchy's theme colors
+
+On [Omarchy](https://omarchy.org), Endpaper's icon can follow the current theme like Omarchy's own app icons, in the Papercraft and Arcade icon sets. In a copy of this repository, run:
+
+```bash
+tools/omarchy-icon.sh install
+```
+
+The script puts two icon templates into `~/.config/omarchy/icons/`, and from then on Omarchy redraws the icon on every theme switch. The app itself doesn't change, and its About dialog keeps the normal icon. To go back to the normal icon everywhere, run `tools/omarchy-icon.sh remove`. Without Omarchy, the script changes nothing.
+
 ## Build and run
 
 From source, without installing (needs GTK 4, libadwaita, WebKitGTK 6.0 and PyGObject):

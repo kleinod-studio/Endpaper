@@ -84,6 +84,15 @@
     <control>pointing</control>
   </supports>
   <releases>
+    <release version="0.5.2" date="2026-11-27">
+      <description>
+        <p>A theme that follows Omarchy, and lines that stay on their page.</p>
+        <ul>
+          <li>On Omarchy, the theme "Omarchy" colors the pages and the whole window like the current Omarchy theme, and follows when you switch it</li>
+          <li>Lines of text no longer run past the edge of the page after opening a chapter, which shifted the text further with every page turn</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.5.1" date="2026-11-14">
       <description>
         <p>Marks that survive a new edition of a book.</p>

@@ -360,7 +360,9 @@ def scenario(app, window):
     js(reader, "endpaper.next()")
     wait_for(lambda: layout()["start"] != spread["start"])
     spin(0.4)
-    check(layout()["start"] - spread["start"] == spread["size"], "turning the page moves on by both pages")
+    turned = layout()
+    # Scroll positions are whole pixels, the page size is not.
+    check(abs(turned["start"] - spread["start"] - spread["size"]) < 2, f"turning the page moves on by both pages ({spread['start']} to {turned['start']}, page {spread['size']})")
     here = layout()["text"][:40]
     reader.toc_button.set_active(True)
     check(wait_for(lambda: layout()["columns"] == 1), "with less room there is one page again, without reopening")
@@ -686,10 +688,19 @@ def scenario(app, window):
     check(shape["block"] > shape["words"] * 1.5, f"a heading taken whole has a box as wide as the column ({shape})")
     check(abs(shape["painted"] - shape["words"]) < 4 and shape["lines"] == 2, "but the mark is painted only behind its words")
 
-    print("Marking with the keyboard")
-    from gi.repository import Gdk
+    print("Lines on the pages")
     js(reader, "endpaper.goToIndex(2)")
     spin(0.6)
+    # Every line of a newly loaded chapter lies within one page; WebKit kept the old line length without help.
+    fit = js(reader, """(() => { const r = document.querySelector('foliate-view').renderer;
+        const doc = r.getContents()[0].doc, size = r.size;
+        const rects = [...doc.querySelectorAll('p')].flatMap(p => [...p.getClientRects()]).filter(b => b.width > 0);
+        const across = rects.filter(b => Math.floor(b.left / size) !== Math.floor((b.right - 1) / size));
+        return { lines: rects.length, across: across.length } })()""")
+    check(fit and fit["lines"] > 10 and fit["across"] == 0, f"every line of a newly loaded chapter stays within its page ({fit})")
+
+    print("Marking with the keyboard")
+    from gi.repository import Gdk
     reader.web.grab_focus()
     press = lambda key, mods=Gdk.ModifierType(0): reader._on_key(None, key, 0, mods)
     check(press(Gdk.KEY_Right) is False, "outside marking mode the keys stay with the book")

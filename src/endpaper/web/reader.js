@@ -229,6 +229,23 @@ window.addEventListener('resize', () => {
     r.render()
 })
 
+// When foliate-js lays out the pages of a chapter it has just loaded, or lays them out anew for another size,
+// WebKit keeps the lines of the text at the length they had before: they run past the edge of the page, and every
+// page turn shifts the text further. Setting the styles again makes WebKit break all lines anew. For a resize, once
+// the size has settled, not for every step of it.
+let relayoutTimer = 0
+let restyled = 0
+const relayoutLines = () => {
+    const r = view?.renderer
+    if (!r?.setStyles) return
+    restyled += 1
+    r.setStyles(`${css()}\n/* ${restyled} */`) // changed text, so that the sheet is really parsed anew
+}
+const sizeObserver = new ResizeObserver(() => {
+    clearTimeout(relayoutTimer)
+    relayoutTimer = setTimeout(relayoutLines, 150)
+})
+
 window.endpaper = {
     async open(url, name, nextSettings, position, nextOpening, check = null) {
         opening = nextOpening
@@ -272,12 +289,15 @@ window.endpaper = {
                 fields.attach(doc, index)
                 pictures.attach(doc)
                 adaptColors(doc)
+                // After foliate-js has laid out the pages, before it goes to the place in the chapter.
+                queueMicrotask(relayoutLines)
             })
             view.addEventListener('external-link', e => {
                 e.preventDefault()
                 post('external-link', { href: e.detail.href ?? e.detail.a?.getAttribute('href') ?? '' })
             })
             document.body.append(view)
+            sizeObserver.observe(view)
             await view.open(new File([blob], name, { type: 'application/epub+zip' }))
             applyLayout()
             // A new edition of the book: the place of reading is found again by its chapter and its words.
